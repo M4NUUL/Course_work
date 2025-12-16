@@ -1,0 +1,5 @@
+/home/m4nuul/Coding/Course_work/build/CMakeFiles/CourseWorkApp.dir
+/home/m4nuul/Coding/Course_work/build/CMakeFiles/edit_cache.dir
+/home/m4nuul/Coding/Course_work/build/CMakeFiles/rebuild_cache.dir
+/home/m4nuul/Coding/Course_work/build/CMakeFiles/CourseWorkApp_autogen_timestamp_deps.dir
+/home/m4nuul/Coding/Course_work/build/CMakeFiles/CourseWorkApp_autogen.dir

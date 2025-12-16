@@ -12,6 +12,8 @@ add_executable(CourseWorkApp
     src/main.cpp
     src/ui/LoginWindow.h
     src/ui/LoginWindow.cpp
+    src/ui/ToggleSwitch.h
+    src/ui/ToggleSwitch.cpp
 )
 
 target_link_libraries(CourseWorkApp PRIVATE Qt6::Widgets)

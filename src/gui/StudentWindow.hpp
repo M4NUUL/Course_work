@@ -12,11 +12,14 @@ public:
 
 private slots:
     void loadAssignments();
+    void loadMySubmissions();
     void onUpload();
     void onAssignmentDoubleClicked(int row, int column);
+    void onDownloadMySubmission();
 
 private:
     int m_studentId;
     QTableWidget *tblAssignments;
+    QTableWidget *tblMySubmissions;
     QPushButton *btnUpload;
 };

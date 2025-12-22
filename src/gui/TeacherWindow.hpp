@@ -6,8 +6,9 @@
 
 class TeacherWindow : public QWidget {
     Q_OBJECT
+
 public:
-    explicit TeacherWindow(int teacherId, QWidget *parent=nullptr);
+    explicit TeacherWindow(int teacherId, QWidget *parent = nullptr);
 
 private slots:
     void loadAssignments();
@@ -15,7 +16,8 @@ private slots:
     void loadSubmissions(int assignmentId);
     void onDownloadSubmission();
     void onGradeSubmission();
-    void onCreateAssignment();   // <--- новый слот
+    void onCreateAssignment();
+    void onDeleteAssignment();
 
 private:
     int m_teacherId;
@@ -24,7 +26,9 @@ private:
     QPushButton *btnRefresh;
     QPushButton *btnDownload;
     QPushButton *btnGrade;
-    QPushButton *btnCreateAssignment; // <--- новая кнопка
+    QPushButton *btnCreateAssignment;
+    QPushButton *btnDeleteAssignment;
     int currentAssignmentId = -1;
+
     void clearSubmissions();
 };

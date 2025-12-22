@@ -1,20 +1,25 @@
 #include "AssignmentDetailDialog.hpp"
 #include "../db/Database.hpp"
 
-#include <QVBoxLayout>
-#include <QHBoxLayout>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QTableWidgetItem>
 #include <QLabel>
 #include <QTextEdit>
-#include <QTableWidget>
 #include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+
 #include <QSqlQuery>
 #include <QSqlError>
+
 #include <QMessageBox>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
+
 
 AssignmentDetailDialog::AssignmentDetailDialog(int assignmentId, QWidget *parent)
     : QDialog(parent), m_assignmentId(assignmentId)

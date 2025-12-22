@@ -17,6 +17,7 @@ private slots:
     void onCreateDiscipline();
     void onCreateAssignment();
     void onRefresh();
+    void onDeleteUser();
 
 private:
     int m_adminId;
@@ -27,6 +28,7 @@ private:
     QPushButton *btnCreateDiscipline;
     QPushButton *btnCreateAssignment;
     QPushButton *btnRefresh;
+    QPushButton *btnDeleteUser;
 
     void showError(const QString &text);
 };

@@ -1,12 +1,15 @@
 #include "TeacherWindow.hpp"
+
 #include "../db/Database.hpp"
 #include "../config/ConfigManager.hpp"
 #include "../crypto/KeyProtect.hpp"
 #include "../crypto/FileCrypto.hpp"
 #include "../utils/Logger.hpp"
+
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSqlQuery>
+#include <QSqlError>
 #include <QMessageBox>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -19,22 +22,24 @@
 #include <QByteArray>
 #include <QFileInfo>
 #include <QDateTime>
-#include <QSqlError>
+#include <QListWidget>
+#include <QDialog>
+#include <QPushButton>
+#include <QHeaderView>
+#include <QTableWidgetItem>
+#include <QDebug>
 
-
-TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
-    : QWidget(parent), m_teacherId(teacherId)
-{
+TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), m_teacherId(teacherId) {
     setWindowTitle("Jumandgi — Интерфейс преподавателя");
     resize(1000,600);
     auto v = new QVBoxLayout(this);
     auto htop = new QHBoxLayout();
-
     tblAssignments = new QTableWidget();
     tblAssignments->setColumnCount(2);
     tblAssignments->setHorizontalHeaderLabels({"ID","Задание"});
     tblAssignments->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblAssignments->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tblAssignments->horizontalHeader()->setStretchLastSection(true);
     connect(tblAssignments, &QTableWidget::cellClicked, this, &TeacherWindow::onAssignmentSelected);
 
     tblSubmissions = new QTableWidget();
@@ -42,6 +47,7 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
     tblSubmissions->setHorizontalHeaderLabels({"ID","Студент","Файл","Загружено","Оценка"});
     tblSubmissions->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblSubmissions->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tblSubmissions->horizontalHeader()->setStretchLastSection(true);
 
     htop->addWidget(tblAssignments, 1);
     htop->addWidget(tblSubmissions, 2);
@@ -49,15 +55,18 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
     btnRefresh = new QPushButton("Обновить");
     btnDownload = new QPushButton("Скачать/Открыть");
     btnGrade = new QPushButton("Оценить / Комментарий");
-    btnCreateAssignment = new QPushButton("Создать задание"); // новая кнопка
+    btnCreateAssignment = new QPushButton("Создать задание");
+    btnDeleteAssignment = new QPushButton("Удалить задание");
 
     connect(btnRefresh, &QPushButton::clicked, this, &TeacherWindow::loadAssignments);
     connect(btnDownload, &QPushButton::clicked, this, &TeacherWindow::onDownloadSubmission);
     connect(btnGrade, &QPushButton::clicked, this, &TeacherWindow::onGradeSubmission);
     connect(btnCreateAssignment, &QPushButton::clicked, this, &TeacherWindow::onCreateAssignment);
+    connect(btnDeleteAssignment, &QPushButton::clicked, this, &TeacherWindow::onDeleteAssignment);
 
     auto hbot = new QHBoxLayout();
     hbot->addWidget(btnCreateAssignment);
+    hbot->addWidget(btnDeleteAssignment);
     hbot->addWidget(btnRefresh);
     hbot->addWidget(btnDownload);
     hbot->addWidget(btnGrade);
@@ -75,7 +84,7 @@ void TeacherWindow::loadAssignments() {
     QSqlQuery q(db);
     q.prepare("SELECT id, title FROM assignments WHERE created_by = ?");
     q.addBindValue(m_teacherId);
-    if (!q.exec()) { QMessageBox::warning(this, "Ошибка", "Не удалось загрузить задания"); return; }
+    if (!q.exec()) { QMessageBox::warning(this, "Ошибка", "Не удалось загрузить задания: " + q.lastError().text()); return; }
     int row = 0;
     while (q.next()) {
         tblAssignments->insertRow(row);
@@ -86,7 +95,7 @@ void TeacherWindow::loadAssignments() {
     tblAssignments->resizeColumnsToContents();
 }
 
-void TeacherWindow::onAssignmentSelected(int row, int /*col*/) {
+void TeacherWindow::onAssignmentSelected(int row, int) {
     if (row < 0) return;
     auto item = tblAssignments->item(row,0);
     if (!item) return;
@@ -105,7 +114,7 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
     QSqlQuery q(db);
     q.prepare("SELECT s.id, u.login, s.original_name, s.uploaded_at, s.grade FROM submissions s LEFT JOIN users u ON s.student_id = u.id WHERE s.assignment_id = ?");
     q.addBindValue(assignmentId);
-    if (!q.exec()) { QMessageBox::warning(this, "Ошибка", "Не удалось загрузить отправления"); return; }
+    if (!q.exec()) { QMessageBox::warning(this, "Ошибка", "Не удалось загрузить отправления: " + q.lastError().text()); return; }
     int row = 0;
     while (q.next()) {
         tblSubmissions->insertRow(row);
@@ -162,21 +171,24 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    std::string serr;
     QString encFilePath = QString("storage/files/%1").arg(filePath);
-    QTemporaryFile tmp;
-    tmp.setFileTemplate(QDir::tempPath() + "/jumandgiXXXXXX_" + originalName);
-    if (!tmp.open()) { QMessageBox::warning(this,"Ошибка","Не удалось создать временный файл"); return; }
-    QString tmpPath = tmp.fileName();
-    tmp.close();
+    if (!QFileInfo::exists(encFilePath)) { QMessageBox::warning(this,"Ошибка","Зашифрованный файл не найден"); return; }
 
+    QString tmpPath = QDir::temp().filePath(QString("jumandgi_sub_%1_%2").arg(subId).arg(originalName));
+    QFile::remove(tmpPath);
+
+    std::string serr;
     if (!crypto::aes256_cbc_decrypt(fileKey, fileIv, encFilePath.toStdString(), tmpPath.toStdString(), serr)) {
         QMessageBox::critical(this, "Ошибка расшифровки файла", QString::fromStdString(serr));
         return;
     }
 
-    QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath));
-    Logger::log(m_teacherId, "download_submission", QString("submission_id=%1").arg(subId));
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath))) {
+        QMessageBox::warning(this,"Ошибка","Не удалось открыть файл: " + tmpPath);
+        return;
+    }
+
+    Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(tmpPath));
 }
 
 void TeacherWindow::onGradeSubmission() {
@@ -197,7 +209,7 @@ void TeacherWindow::onGradeSubmission() {
     q.addBindValue(feedback);
     q.addBindValue(subId);
     if (!q.exec()) {
-        QMessageBox::warning(this,"Ошибка","Не удалось сохранить оценку");
+        QMessageBox::warning(this,"Ошибка","Не удалось сохранить оценку: " + q.lastError().text());
         return;
     }
     Logger::log(m_teacherId, "grade_submission", QString("submission_id=%1 grade=%2").arg(subId).arg(grade));
@@ -217,16 +229,106 @@ void TeacherWindow::onCreateAssignment() {
 
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
-    q.prepare("INSERT INTO assignments (title, description, discipline_id, created_by, due_date, created_at) VALUES (?, ?, NULL, ?, ?, NOW())");
+    q.prepare("INSERT INTO assignments (title, description, discipline_id, created_by, due_date, created_at) VALUES (?, ?, NULL, ?, ?, NOW()) RETURNING id");
     q.addBindValue(title);
     q.addBindValue(desc);
     q.addBindValue(m_teacherId);
     q.addBindValue(due);
-    if (!q.exec()) {
+    if (!q.exec() || !q.next()) {
         QMessageBox::warning(this,"Ошибка","Не удалось создать задание: " + q.lastError().text());
         return;
     }
-    Logger::log(m_teacherId, "create_assignment", QString("title=%1").arg(title));
+    int assignmentId = q.value(0).toInt();
+
+    QSqlQuery sq(db);
+    sq.prepare("SELECT id, login, full_name FROM users WHERE role = 'student' ORDER BY id");
+    if (!sq.exec()) {
+        QMessageBox::warning(this,"Ошибка","Не удалось получить список студентов: " + sq.lastError().text());
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Выберите студентов (оставьте пустым для всех)");
+    QVBoxLayout *vl = new QVBoxLayout(&dlg);
+    QListWidget *lw = new QListWidget(&dlg);
+    lw->setSelectionMode(QAbstractItemView::NoSelection);
+    vl->addWidget(lw);
+
+    while (sq.next()) {
+        int sid = sq.value(0).toInt();
+        QString label = sq.value(1).toString();
+        QString fn = sq.value(2).toString();
+        if (!fn.isEmpty()) label += " (" + fn + ")";
+        QListWidgetItem *it = new QListWidgetItem(label, lw);
+        it->setData(Qt::UserRole, sid);
+        it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+        it->setCheckState(Qt::Unchecked);
+    }
+
+    QHBoxLayout *h = new QHBoxLayout();
+    QPushButton *btnOk = new QPushButton("OK", &dlg);
+    QPushButton *btnCancel = new QPushButton("Отмена", &dlg);
+    h->addStretch();
+    h->addWidget(btnOk);
+    h->addWidget(btnCancel);
+    vl->addLayout(h);
+
+    connect(btnOk, &QPushButton::clicked, &dlg, &QDialog::accept);
+    connect(btnCancel, &QPushButton::clicked, &dlg, &QDialog::reject);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        QList<int> chosen;
+        for (int i=0;i<lw->count();++i) {
+            QListWidgetItem *it = lw->item(i);
+            if (it->checkState() == Qt::Checked) {
+                chosen.append(it->data(Qt::UserRole).toInt());
+            }
+        }
+
+        if (!chosen.isEmpty()) {
+            QSqlQuery insertq(db);
+            insertq.prepare("INSERT INTO assignment_students (assignment_id, student_id) VALUES (?, ?) ON CONFLICT DO NOTHING");
+            for (int sid : chosen) {
+                insertq.bindValue(0, assignmentId);
+                insertq.bindValue(1, sid);
+                if (!insertq.exec()) {
+                    QMessageBox::warning(this,"Ошибка","Не удалось назначить студентов: " + insertq.lastError().text());
+                }
+            }
+        }
+    }
+
+    Logger::log(m_teacherId, "create_assignment", QString("title=%1 assignment_id=%2").arg(title).arg(assignmentId));
     loadAssignments();
     QMessageBox::information(this,"OK","Задание создано");
+}
+
+void TeacherWindow::onDeleteAssignment() {
+    auto sel = tblAssignments->selectedItems();
+    if (sel.isEmpty()) { QMessageBox::warning(this, "Ошибка", "Выберите задание"); return; }
+    int row = tblAssignments->currentRow();
+    int assignmentId = tblAssignments->item(row,0)->text().toInt();
+
+    if (QMessageBox::question(this, "Удалить задание",
+            QString("Вы действительно хотите удалить задание %1 ?").arg(assignmentId),
+            QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) return;
+
+    QSqlQuery q(Database::instance().get());
+    q.prepare("SELECT sp_delete_assignment(?, ?)");
+    q.addBindValue(assignmentId);
+    q.addBindValue(m_teacherId);
+    if (!q.exec()) {
+        QString err = q.lastError().text();
+        if (err.contains("forbidden")) {
+            QMessageBox::warning(this,"Ошибка","Вы можете удалять только свои задания");
+        } else {
+            QMessageBox::warning(this,"Ошибка","Не удалось удалить задание: " + err);
+        }
+        return;
+    }
+
+    Logger::log(m_teacherId, "delete_assignment", QString("assignment_id=%1").arg(assignmentId));
+    loadAssignments();
+    clearSubmissions();
+    QMessageBox::information(this, "OK", "Задание удалено");
 }

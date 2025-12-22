@@ -6,7 +6,6 @@
 #include <QHBoxLayout>
 #include <QSqlQuery>
 #include <QSqlError>
-#include "../auth/AuthManager.hpp"
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QLabel>
@@ -181,7 +180,7 @@ void AdminWindow::onCreateAssignment() {
     bool ok;
     QString title = QInputDialog::getText(this, "Создать задание (админ)", "Заголовок:", QLineEdit::Normal, "", &ok);
     if (!ok || title.trimmed().isEmpty()) return;
-    QString desc = QInputDialog::getMultiLineText(this, "Создать задание", "Описание:", QString(), &ok);
+    QString desc = QInputDialog::getMultiLineText(this, "Создать задание", "Описание:", &ok);
     if (!ok) return;
 
     QSqlQuery q(Database::instance().get());

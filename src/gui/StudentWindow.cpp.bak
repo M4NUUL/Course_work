@@ -20,8 +20,6 @@
 #include <QProcess>
 #include <QCoreApplication>
 #include <QFileInfo>
-#include <QDesktopServices>
-#include <QUrl>
 #include <QDir>
 #include <QDebug>
 

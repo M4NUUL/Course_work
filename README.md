@@ -1,157 +1,285 @@
-# Лабораторная работа — БД СПО «Колибри»
+Содержание README
 
-Данный проект представляет собой реализацию базы данных для СПО «Колибри» с использованием PostgreSQL.  
-Все взаимодействие с базой данных осуществляется через консоль PostgreSQL (`psql`) без использования логики на C++.
+Описание проекта
 
----
+Основные роли и функции
 
-## Требования
+Структура проекта (файловая система)
 
-PostgreSQL 12+  
-Пользователь БД: m4nuul  
-База данных: kolibri_db  
-CSV-файл: spo_kolibri.csv  
+Структура баз данных (основные таблицы)
 
----
+Хранение файлов и метаданных
 
-## Структура проекта
+Конфигурация (пример config/config.json)
 
-s2_l6/  
-├── sql/  
-│   ├── 01_schema.sql  
-│   ├── 02_import_stage.sql  
-│   ├── 03_normalize.sql  
-│   ├── 10_add.sql  
-│   ├── 20_find_fio.sql  
-│   ├── 30_find_phone.sql  
-│   ├── 40_inn_by_snils.sql  
-│   └── 50_delete.sql  
-├── spo_kolibri.csv  
-└── README.md  
+Скрипты и утилиты (инициализация, сборка, создание admin)
 
----
+Зависимости и подготовка окружения
 
-## Проверка подключения к базе данных
+Безопасность
 
-Команда:
-psql -U m4nuul -d kolibri_db -c "SELECT current_user;"
+Как разворачивать (коротко)
 
-Описание:
-*Проверяет корректность подключения к базе данных.*
+Контакты и лицензия
 
----
+1. Описание проекта
 
-## Создание структуры базы данных
+Система предназначена для автоматизации процесса публикации и проверки курсовых работ и практик в учебном процессе.
+Реализованы: регистрация/авторизация, разграничение прав по ролям, публикация заданий, отправка/хранение/расшифровка файлов, выставление оценок, ведение журнала действий и экспорт отчётов.
 
-Команда:
-psql -U m4nuul -d kolibri_db -f sql/01_schema.sql
+Технологии: C++17/Qt5 (или Qt6), PostgreSQL, OpenSSL, CMake.
 
-Описание:
-*Создаёт схему kolibri, таблицы, типы данных и индексы.*
+2. Основные роли и функции
+Роли
 
----
+Преподаватель
 
-## Загрузка данных из CSV
+публикует задания (курсовые/практики)
 
-Команда:
-psql -U m4nuul -d kolibri_db -v csv='/home/m4nuul/Coding/s2_l6/spo_kolibri.csv' -f sql/02_import_stage.sql
+просматривает работы студентов
 
-Описание:
-*Загружает данные из CSV-файла в промежуточную таблицу person_import.*
+комментирует и выставляет оценки
 
-Команда:
-psql -U m4nuul -d kolibri_db -f sql/03_normalize.sql
+ведёт журнал оценок
 
-Описание:
-*Нормализует данные и переносит их в основные таблицы базы данных.*
+Студент
 
----
+просматривает задания по дисциплинам
 
-## Добавление данных
+загружает выполненные работы (файлы шифруются при загрузке)
 
-Команда:
-psql -U m4nuul -d kolibri_db -v last="Иванов" -v first="Иван" -v middle="Иванович" -v birth="2001-02-03" -v citizenship="РФ" -v org="НГТУ" -v faculty="ФПМИ" -v snils="123-456-789 00" -v inn="123456789012" -v phone="+79998887766" -v last_edu="Аттестат" -v squad="1" -v prof="да" -v member="да" -f sql/10_add.sql
+получает комментарии/оценки, видит историю отправок
 
-Описание:
-*Добавляет нового человека в базу данных с использованием SQL-операторов INSERT.*
+Администратор
 
----
+управляет пользователями (создание/блокировка/назначение ролей)
 
-## Поиск данных по ФИО
+настраивает дисциплины и группы
 
-Команда:
-psql -U m4nuul -d kolibri_db -v last="Иванов" -v first="Иван" -v middle="Иванович" -f sql/20_find_fio.sql
+просматривает логи, выполняет экспорт/резервирование БД
 
-Описание:
-*Возвращает все данные о человеке на основе ФИО.*
+Основные функции
 
----
+Авторизация / регистрация (desktop-окно)
 
-## Поиск ФИО по номеру телефона
+валидация сложности пароля; хеширование паролей PBKDF2-HMAC-SHA256
 
-Команда:
-psql -U m4nuul -d kolibri_db -v phone="+79998887766" -f sql/30_find_phone.sql
+Личный кабинет: задания, мои отправки, журнал оценок
 
-Описание:
-*Позволяет найти человека по номеру телефона.*
+Управление заданиями (создание/правка/удаление)
 
----
+Загрузка/просмотр/оценивание отправлений
 
-## Поиск ИНН по СНИЛС
+Админ-панель: управление пользователями, дисциплинами, правами
 
-Команда:
-psql -U m4nuul -d kolibri_db -v snils="123-456-789 00" -f sql/40_inn_by_snils.sql
+Защита данных: PBKDF2, AES-256-CBC для файлов; ключи файлов шифруются AES-GCM мастерк-ключом
 
-Описание:
-*Возвращает ИНН по заданному СНИЛС.*
+Журнал аудита и логирование (файл + таблица audit_log)
 
----
+Экспорт/отчёты: CSV/JSON
 
-## Удаление данных
+3. Структура проекта (файловая система)
+```
+Course_work/
+├─ CMakeLists.txt
+├─ README.md
+├─ config/
+│  ├─ config.json.template
+│  └─ config.json            # создаётся scripts/init_db.sh
+├─ sql/
+│  └─ 001_schema.sql         # схема БД для PostgreSQL
+├─ scripts/
+│  ├─ init_db.sh
+│  ├─ build.sh
+│  └─ package_release.sh
+├─ src/
+│  ├─ main.cpp
+│  ├─ C++ модули:
+│  │  ├─ db/Database.hpp/.cpp
+│  │  ├─ config/ConfigManager.hpp/.cpp
+│  │  ├─ auth/PasswordUtils.hpp/.cpp
+│  │  ├─ auth/AuthManager.hpp/.cpp
+│  │  ├─ crypto/FileCrypto.hpp/.cpp
+│  │  ├─ crypto/KeyProtect.hpp/.cpp
+│  │  ├─ tools/create_admin.cpp
+│  │  ├─ utils/Logger.hpp/.cpp
+│  │  └─ gui/ (LoginWindow, MainWindow, TeacherWindow и пр.)
+├─ storage/
+│  ├─ files/                  # зашифрованные файлы: <uuid>.dat
+│  └─ metadata/               # метаданные: <uuid>.json (iv, encrypted_key, owner, original_name)
+├─ logs/
+│  └─ actions.log
+└─ data_pg/                   # (опционально) каталог PostgreSQL вместе                        # с docker-compose
+```
 
-Команда:
-psql -U m4nuul -d kolibri_db -v id=52 -f sql/50_delete.sql
+4. Структура баз данных (основные таблицы)
 
-Описание:
-*Удаляет человека по идентификатору person_id. Все связанные данные удаляются каскадно.*
+users
+```
+id SERIAL PRIMARY KEY,
+login TEXT UNIQUE NOT NULL,
+full_name TEXT,
+email TEXT,
+role TEXT NOT NULL, -- student, teacher, admin
+password_hash TEXT NOT NULL,
+salt TEXT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+active BOOLEAN DEFAULT TRUE
+```
 
----
+disciplines
+```
+id SERIAL PRIMARY KEY,
+name TEXT NOT NULL,
+code TEXT UNIQUE
+```
 
-## Полезные команды PostgreSQL
+assignments
+```
+id SERIAL PRIMARY KEY,
+title TEXT NOT NULL,
+description TEXT,
+discipline_id INTEGER REFERENCES disciplines(id),
+created_by INTEGER REFERENCES users(id),
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+due_date TIMESTAMP
+```
 
-Команда:
-psql -U m4nuul -d kolibri_db
+submissions
+```
+id SERIAL PRIMARY KEY,
+assignment_id INTEGER REFERENCES assignments(id),
+student_id INTEGER REFERENCES users(id),
+file_path TEXT NOT NULL,      -- e.g. uuid.dat
+original_name TEXT NOT NULL,
+uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+grade TEXT,
+feedback TEXT
+```
 
-Описание:
-*Вход в интерактивный режим PostgreSQL.*
+audit_log
+```
+id SERIAL PRIMARY KEY,
+user_id INTEGER,
+action TEXT,
+details TEXT,
+ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
 
-Команда:
-\dt kolibri.*
+Полный SQL в: sql/001_schema.sql.
 
-Описание:
-*Просмотр списка таблиц в схеме kolibri.*
+5. Хранение файлов и метаданных
 
-Команда:
-\q
+Все загруженные файлы шифруются и хранятся в storage/files/<uuid>.dat.
 
-Описание:
-*Выход из PostgreSQL.*
+Для каждого файла создаётся метаданный JSON в storage/metadata/<uuid>.json:
+```
+{
+  "owner_id": 123,
+  "original_name": "report.pdf",
+  "iv": "<base64>",                // IV для AES-256-CBC
+  "key_encrypted": "<base64>",     // AES-GCM зашифрованный file_key
+  "key_iv": "<base64>",            // iv для AES-GCM
+  "key_tag": "<base64>"           // GCM tag
+}
+```
 
----
+Мастер-ключ (master_key_hex) хранится в config/config.json (права 600). Мастер-ключ используется только для защиты file_key (AES-GCM).
 
-## Выход из режима (END)
+6. Конфигурация (пример config/config.json)
 
-Если после выполнения команды появляется надпись (END), значит результат открыт в режиме просмотра.
+config/config.json.template
+```
+{
+  "master_key_hex": "YOUR_MASTER_KEY_HEX_GOES_HERE",
+  "pbkdf2_iterations": 100000,
+  "db": {
+    "host": "localhost",
+    "port": 5432,
+    "name": "jumandgi",
+    "user": "jumandgi_user",
+    "password": "changeme"
+  }
+}
+```
 
-Команда:
-q
+config/config.json создаётся скриптом scripts/init_db.sh автоматически (мастер-ключ генерируется).
 
-Описание:
-*Выход из режима просмотра (pager / less).*
+7. Скрипты и утилиты
 
----
+scripts/init_db.sh — инициализация: создаёт config/config.json, пытается создать роль/базу в PostgreSQL (через sudo -u postgres) и загружает схему sql/001_schema.sql. Скрипт не использует Python.
 
-## Итог
+scripts/build.sh — сборка проекта (CMake, make).
 
-В рамках лабораторной работы реализована база данных СПО «Колибри» с поддержкой добавления, удаления и поиска данных.  
-Все операции выполняются через PostgreSQL с использованием SQL-скриптов и консольного интерфейса psql.
+scripts/package_release.sh — упаковка проекта в tar.gz.
+
+src/tools/create_admin.cpp — CLI-утилита (C++) для создания администратора: корректно хеширует пароль (PBKDF2) и создаёт запись в БД (используется после сборки).
+После сборки в build/ запускаете ./create_admin и вводите логин/пароль.
+
+GUI бинарь: build/Jumandgi.
+
+8. Зависимости и подготовка окружения
+
+Минимальные зависимости (Ubuntu/Debian):
+```
+sudo apt update
+sudo apt install -y build-essential cmake libssl-dev libpq-dev postgresql postgresql-contrib \
+    qtbase5-dev qttools5-dev qttools5-dev-tools libqt5sql5-psql
+```
+
+Пакеты для Qt6 аналогичны, но названия могут отличаться. Убедитесь, что Qt установлен с плагином QPSQL.
+
+9. Безопасность
+
+Пароли: PBKDF2-HMAC-SHA256, соль 16 байт, итерации — 100000 (настраивается в config.json).
+
+Файлы: AES-256-CBC для содержимого, ключ файла (file_key) — AES-256-GCM, зашифрован мастерк-ключом.
+
+Ключи: мастер-ключ хранится в конфиге с правами 600 только для учебной демонстрации. На продакшене следует использовать KMS/HSM.
+
+SQL: все запросы выполняются параметризованно (QSqlQuery::prepare() + addBindValue) — защита от SQL-инъекций.
+
+Пути: проверка путей и фильтрация расширений (белый список).
+
+Аудит: все критичные действия логируются в logs/actions.log и таблицу audit_log.
+
+Регистрация/ввод: валидация всех пользовательских форм.
+
+10. Как разворачивать (коротко)
+
+Скопируйте проект в Course_work/.
+
+Настройте PostgreSQL (можно локально или в контейнере).
+
+Запустите scripts/init_db.sh и следуйте подсказкам (скрипт создаёт config/config.json и загружает схему в БД).
+
+Соберите проект:
+```
+./scripts/build.sh
+```
+
+Создайте администратора (в каталоге build/):
+```
+./create_admin
+```
+
+Запустите приложение:
+```
+./build/Jumandgi
+```
+
+Полные инструкции и дополнительные опции (docker-compose, backup/restore) находятся в разделе docs/ и в scripts/ проекта.
+
+11. Контакты / дальнейшая работа
+
+Автор / контакт: Никита Терещенко
+
+При необходимости могу:
+
+добавить подробную инструкцию развёртывания с docker-compose (Postgres + приложение),
+
+подготовить пакет для Windows,
+
+расширить интерфейс администратора или студента,
+
+подготовить пояснительную записку (ГОСТ).

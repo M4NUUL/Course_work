@@ -10,9 +10,6 @@
 #include <QPushButton>
 #include <QWidget>
 #include <QLabel>
-#include <QFile>
-#include <QDebug>
-#include <QApplication> // <- добавлено, чтобы qApp / QApplication::instance() были доступны
 
 MainWindow::MainWindow(int userId, const QString &role, QWidget *parent)
     : QMainWindow(parent), m_userId(userId), m_role(role)
@@ -25,18 +22,11 @@ void MainWindow::setupUi() {
     setCentralWidget(central);
     auto v = new QVBoxLayout(central);
 
-    // Top bar with Theme and Logout buttons
+    // Top bar with Logout button
     auto topBar = new QHBoxLayout();
     topBar->addStretch();
-
-    btnTheme = new QPushButton("Тема", this);
-    btnTheme->setObjectName("themeButton");
-    topBar->addWidget(btnTheme);
-
     btnLogout = new QPushButton("Выйти", this);
-    btnLogout->setObjectName("logoutButton");
     topBar->addWidget(btnLogout);
-
     v->addLayout(topBar);
 
     // Content area
@@ -55,44 +45,22 @@ void MainWindow::setupUi() {
     }
 
     connect(btnLogout, &QPushButton::clicked, this, &MainWindow::onLogout);
-    connect(btnTheme, &QPushButton::clicked, this, &MainWindow::onToggleTheme);
-}
-
-void MainWindow::loadTheme(const QString &path) {
-    QFile f(path);
-    if (f.open(QFile::ReadOnly | QFile::Text)) {
-        QString sheet = QString::fromUtf8(f.readAll());
-        f.close();
-        // безопасно получить указатель на QApplication
-        if (QApplication *app = qobject_cast<QApplication*>(QApplication::instance())) {
-            app->setStyleSheet(sheet);
-        } else {
-            qWarning() << "No QApplication instance available to set stylesheet.";
-        }
-    } else {
-        qWarning() << "Cannot load theme:" << path;
-    }
-}
-
-void MainWindow::onToggleTheme() {
-    if (m_darkTheme) {
-        loadTheme("style/light.qss");
-    } else {
-        loadTheme("style/dark.qss");
-    }
-    m_darkTheme = !m_darkTheme;
 }
 
 void MainWindow::onLogout() {
+    // Create a LoginWindow and connect its loginSuccess to create a new MainWindow.
     LoginWindow *login = new LoginWindow();
     login->setAttribute(Qt::WA_DeleteOnClose);
     login->show();
 
+    // When new login succeeds, open a new MainWindow for that user
     connect(login, &LoginWindow::loginSuccess, [login](int userId, const QString &role) {
         MainWindow *mw = new MainWindow(userId, role);
         mw->show();
+        // close and delete login window
         login->close();
     });
 
+    // Close current main window
     this->close();
 }

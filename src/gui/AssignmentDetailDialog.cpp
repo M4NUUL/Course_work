@@ -51,6 +51,16 @@ AssignmentDetailDialog::AssignmentDetailDialog(int assignmentId, QWidget *parent
     tblFiles->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblFiles->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblFiles->horizontalHeader()->setStretchLastSection(true);
+    
+    QFont tf = tblFiles->font();
+    tf.setPointSize(10);
+    tblFiles->setFont(tf);
+    QFontMetrics fm(tf);
+    tblFiles->verticalHeader()->setDefaultSectionSize(fm.height() + 12);
+    tblFiles->horizontalHeader()->setFixedHeight(fm.height() + 16);
+    tblFiles->setSelectionMode(QAbstractItemView::SingleSelection);
+    tblFiles->setAlternatingRowColors(true);
+
     v->addWidget(new QLabel("Прикреплённые файлы:"));
     v->addWidget(tblFiles, 1);
 

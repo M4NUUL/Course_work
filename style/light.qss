@@ -1,0 +1,13 @@
+/* light.qss — простая светлая тема */
+* { font-family: "Segoe UI", "Roboto", "Noto Sans", sans-serif; color: #0F1720; }
+QWidget { background: #F6F9FB; }
+QFrame, QGroupBox { background: #FFFFFF; border-radius: 8px; margin: 6px; padding: 6px; }
+QPushButton { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #FFFFFF, stop:1 #F0F4F8); border: 1px solid rgba(0,0,0,0.06); border-radius: 6px; padding: 6px 10px; color: #0F1720; }
+QPushButton:hover { background: #E8F2FB; border: 1px solid rgba(78,168,255,0.3); }
+QPushButton#accentButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #4EA8FF, stop:1 #2EC4B6); color: #051018; font-weight: 600; }
+QLabel { color: #0F1720; }
+QLineEdit, QTextEdit { background: #FFFFFF; border: 1px solid rgba(0,0,0,0.06); border-radius: 4px; padding: 6px; color: #0F1720; }
+QTableWidget, QTableView { background: transparent; gridline-color: rgba(0,0,0,0.04); border-radius: 6px; selection-background-color: rgba(78,168,255,0.18); selection-color: #0F1720; }
+QHeaderView::section { background: #F0F4F8; color: #2D3A45; padding: 6px; border-bottom: 1px solid rgba(0,0,0,0.04); }
+QDialog { background: #FFFFFF; border-radius: 6px; }
+QToolTip { background-color: #ffffff; color: #0F1720; border: 1px solid rgba(0,0,0,0.06); padding: 6px; border-radius: 6px; }

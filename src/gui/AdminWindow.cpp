@@ -28,6 +28,22 @@ AdminWindow::AdminWindow(int adminId, QWidget *parent)
     tblUsers->setHorizontalHeaderLabels({"ID","Login","Full name","Role","Group"});
     tblUsers->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblUsers->horizontalHeader()->setStretchLastSection(true);
+    
+
+// Стилизация и высота строк
+QFont tblFont = tblUsers->font();
+tblFont.setPointSize(10);
+tblUsers->setFont(tblFont);
+QFontMetrics fm(tblFont);
+int rowH = fm.height() + 12;
+tblUsers->verticalHeader()->setDefaultSectionSize(rowH);
+tblUsers->horizontalHeader()->setFixedHeight(fm.height() + 16);
+
+tblUsers->setSelectionBehavior(QAbstractItemView::SelectRows);
+tblUsers->setSelectionMode(QAbstractItemView::SingleSelection);
+tblUsers->setAlternatingRowColors(true);
+tblUsers->horizontalHeader()->setStretchLastSection(true);
+
     v->addWidget(new QLabel("Пользователи:"));
     v->addWidget(tblUsers, 1);
 

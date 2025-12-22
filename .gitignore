@@ -32,5 +32,6 @@ go.work.sum
 .vscode/
 
 # Un usefull folder/folder that will be created
-build/
-logs/
+/build/
+/logs/
+/config/config.json

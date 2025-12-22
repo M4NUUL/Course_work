@@ -48,6 +48,15 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), 
     tblAssignments->horizontalHeader()->setStretchLastSection(true);
     connect(tblAssignments, &QTableWidget::cellClicked, this, &TeacherWindow::onAssignmentSelected);
 
+    QFont tblFont = tblAssignments->font();
+    tblFont.setPointSize(10);
+    tblAssignments->setFont(tblFont);
+    QFontMetrics fm(tblFont);
+    tblAssignments->verticalHeader()->setDefaultSectionSize(fm.height() + 12);
+    tblAssignments->horizontalHeader()->setFixedHeight(fm.height() + 16);
+    tblAssignments->setSelectionMode(QAbstractItemView::SingleSelection);
+    tblAssignments->setAlternatingRowColors(true);
+
     // Submissions table
     tblSubmissions = new QTableWidget();
     tblSubmissions->setColumnCount(5);
@@ -55,6 +64,14 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), 
     tblSubmissions->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblSubmissions->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblSubmissions->horizontalHeader()->setStretchLastSection(true);
+    QFont tblFont2 = tblSubmissions->font();
+    tblFont2.setPointSize(10);
+    tblSubmissions->setFont(tblFont2);
+    QFontMetrics fm2(tblFont2);
+    tblSubmissions->verticalHeader()->setDefaultSectionSize(fm2.height() + 12);
+    tblSubmissions->horizontalHeader()->setFixedHeight(fm2.height() + 16);
+    tblSubmissions->setSelectionMode(QAbstractItemView::SingleSelection);
+    tblSubmissions->setAlternatingRowColors(true);
 
     htop->addWidget(tblAssignments, 1);
     htop->addWidget(tblSubmissions, 2);
@@ -169,59 +186,93 @@ void TeacherWindow::onDownloadSubmission() {
     QString filePath = q.value(0).toString();
     QString originalName = q.value(1).toString();
 
-    // Read metadata and decrypt key
+    // read metadata (if present) and decrypt key
     QString uuid = QFileInfo(filePath).baseName();
     QString metaPath = QString("storage/metadata/%1.json").arg(uuid);
-    QFile mf(metaPath);
-    if (!mf.open(QIODevice::ReadOnly)) { QMessageBox::warning(this,"Ошибка","Metadata не найден"); return; }
-    auto metaRaw = mf.readAll();
-    mf.close();
-    QJsonDocument jd = QJsonDocument::fromJson(metaRaw);
-    if (!jd.isObject()) { QMessageBox::warning(this,"Ошибка","Неверный metadata"); return; }
-    QJsonObject mo = jd.object();
-    QByteArray encKeyB64 = QByteArray::fromBase64(mo.value("key_encrypted").toString().toUtf8());
-    QByteArray keyIvB64  = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
-    QByteArray keyTagB64 = QByteArray::fromBase64(mo.value("key_tag").toString().toUtf8());
-    QByteArray fileIvB64 = QByteArray::fromBase64(mo.value("iv").toString().toUtf8());
 
-    std::vector<unsigned char> encKey((unsigned char*)encKeyB64.data(), (unsigned char*)encKeyB64.data() + encKeyB64.size());
-    std::vector<unsigned char> keyIv((unsigned char*)keyIvB64.data(), (unsigned char*)keyIvB64.data() + keyIvB64.size());
-    std::vector<unsigned char> keyTag((unsigned char*)keyTagB64.data(), (unsigned char*)keyTagB64.data() + keyTagB64.size());
-    std::vector<unsigned char> fileIv((unsigned char*)fileIvB64.data(), (unsigned char*)fileIvB64.data() + fileIvB64.size());
-
-    auto master = ConfigManager::instance().masterKey();
-    if (master.empty()) { QMessageBox::warning(this,"Ошибка","Мастер-ключ не загружен"); return; }
-
-    std::string err;
-    std::vector<unsigned char> fileKey;
-    if (!keyprotect::decryptWithAesGcm(master, encKey, keyIv, keyTag, fileKey, err)) {
-        QMessageBox::critical(this, "Ошибка дешифрования ключа", QString::fromStdString(err));
-        return;
-    }
-
+    QString tmpPath; // абсолютный путь к временному файлу
     QString encFilePath = QString("storage/files/%1").arg(filePath);
-    if (!QFileInfo::exists(encFilePath)) { QMessageBox::warning(this,"Ошибка","Зашифрованный файл не найден"); return; }
 
-    QString tmpPath = QDir::temp().filePath(QString("jumandgi_sub_%1_%2").arg(subId).arg(originalName));
-    tmpPath = tmpPath.replace("/", "_");
-    QFile::remove(tmpPath);
+    if (QFileInfo(metaPath).exists()) {
+        QFile mf(metaPath);
+        if (!mf.open(QIODevice::ReadOnly)) { QMessageBox::warning(this,"Ошибка","Metadata не найден"); return; }
+        auto metaRaw = mf.readAll();
+        mf.close();
+        QJsonDocument jd = QJsonDocument::fromJson(metaRaw);
+        if (!jd.isObject()) { QMessageBox::warning(this,"Ошибка","Неверный metadata"); return; }
+        QJsonObject mo = jd.object();
+        QByteArray encKeyB64 = QByteArray::fromBase64(mo.value("key_encrypted").toString().toUtf8());
+        QByteArray keyIvB64  = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
+        QByteArray keyTagB64 = QByteArray::fromBase64(mo.value("key_tag").toString().toUtf8());
+        QByteArray fileIvB64 = QByteArray::fromBase64(mo.value("iv").toString().toUtf8());
 
-    std::string serr;
-    if (!crypto::aes256_cbc_decrypt(fileKey, fileIv, encFilePath.toStdString(), tmpPath.toStdString(), serr)) {
-        QMessageBox::critical(this, "Ошибка расшифровки файла", QString::fromStdString(serr));
-        return;
-    }
+        std::vector<unsigned char> encKey((unsigned char*)encKeyB64.data(), (unsigned char*)encKeyB64.data() + encKeyB64.size());
+        std::vector<unsigned char> keyIv((unsigned char*)keyIvB64.data(), (unsigned char*)keyIvB64.data() + keyIvB64.size());
+        std::vector<unsigned char> keyTag((unsigned char*)keyTagB64.data(), (unsigned char*)keyTagB64.data() + keyTagB64.size());
+        std::vector<unsigned char> fileIv((unsigned char*)fileIvB64.data(), (unsigned char*)fileIvB64.data() + fileIvB64.size());
 
-    bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath));
-    if (!opened) {
-        if (!QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << tmpPath)) {
-            QMessageBox::warning(this,"Ошибка","Не удалось открыть файл: " + tmpPath);
+        auto master = ConfigManager::instance().masterKey();
+        if (master.empty()) { QMessageBox::warning(this,"Ошибка","Мастер-ключ не загружен"); return; }
+
+        std::string err;
+        std::vector<unsigned char> fileKey;
+        if (!keyprotect::decryptWithAesGcm(master, encKey, keyIv, keyTag, fileKey, err)) {
+            QMessageBox::critical(this, "Ошибка дешифрования ключа", QString::fromStdString(err));
+            return;
+        }
+
+        if (!QFileInfo(encFilePath).exists()) { QMessageBox::warning(this,"Ошибка","Зашифрованный файл не найден"); return; }
+
+        // Формируем tmpPath корректно: используем оригинальное имя (basename) и подставляем id
+        QString safeOriginal = QFileInfo(originalName).fileName();
+        tmpPath = QDir::temp().filePath(QString("jumandgi_sub_%1_%2").arg(subId).arg(safeOriginal));
+
+        QFile::remove(tmpPath);
+
+        std::string serr;
+        if (!crypto::aes256_cbc_decrypt(fileKey, fileIv, encFilePath.toStdString(), tmpPath.toStdString(), serr)) {
+            QMessageBox::critical(this, "Ошибка расшифровки файла", QString::fromStdString(serr));
+            return;
+        }
+    } else {
+        // Не зашифрован - просто копируем, сохраняя имя
+        if (!QFileInfo(encFilePath).exists()) {
+            QMessageBox::warning(this,"Ошибка","Файл не найден: " + encFilePath);
+            return;
+        }
+        QString safeOriginal = QFileInfo(originalName).fileName();
+        tmpPath = QDir::temp().filePath(QString("jumandgi_sub_%1_%2").arg(subId).arg(safeOriginal));
+        QFile::remove(tmpPath);
+        if (!QFile::copy(encFilePath, tmpPath)) {
+            QMessageBox::warning(this,"Ошибка","Не удалось подготовить файл для открытия");
             return;
         }
     }
 
-    Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(tmpPath));
+    // Убедимся, что path абсолютен
+    QFileInfo tf(tmpPath);
+    QString absTmp = tf.absoluteFilePath();
+
+    // Ставим права на чтение (и запись владельцу)
+    QFile::Permissions perms = QFile::permissions(absTmp);
+    perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther;
+    QFile::setPermissions(absTmp, perms);
+
+    // Сначала пробуем xdg-open (надёжнее на Linux)
+    bool launched = QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp);
+    if (!launched) {
+        // fallback: QDesktopServices
+        bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp));
+        if (!opened) {
+            QMessageBox::warning(this,"Ошибка","Не удалось открыть файл автоматически. Откройте вручную: " + absTmp);
+            qWarning() << "Failed to open file with xdg-open and QDesktopServices:" << absTmp;
+            return;
+        }
+    }
+
+    Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(absTmp));
 }
+
 
 void TeacherWindow::onGradeSubmission() {
     auto sel = tblSubmissions->selectedItems();

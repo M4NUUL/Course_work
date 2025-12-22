@@ -12,14 +12,10 @@ public:
 
 private slots:
     void onLogout();
-    void onToggleTheme();
 
 private:
     QPushButton *btnLogout = nullptr;
-    QPushButton *btnTheme = nullptr;
     int m_userId;
     QString m_role;
-    bool m_darkTheme = true;
     void setupUi();
-    void loadTheme(const QString &path);
 };

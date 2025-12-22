@@ -1,11 +1,11 @@
 {
-  "master_key_hex": "2542c14f6f79eaa2f72a49e0e455ab2d088885563838bfa4479b8a407bd8800c",
+  "master_key_hex": "REPLACE_WITH_MASTER_KEY_HEX",
   "pbkdf2_iterations": 100000,
   "db": {
     "host": "localhost",
     "port": 5432,
     "name": "jumandgi",
     "user": "m4nuul",
-    "password": "N1k134NuU!"
+    "password": "REPLACE_WITH_DB_PASSWORD"
   }
 }

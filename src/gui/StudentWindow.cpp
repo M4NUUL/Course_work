@@ -45,6 +45,15 @@ StudentWindow::StudentWindow(int studentId, QWidget *parent)
     tblAssignments->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblAssignments->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblAssignments->horizontalHeader()->setStretchLastSection(true);
+    
+    QFont tf = tblAssignments->font();
+    tf.setPointSize(10);
+    tblAssignments->setFont(tf);
+    QFontMetrics fm(tf);
+    tblAssignments->verticalHeader()->setDefaultSectionSize(fm.height() + 12);
+    tblAssignments->horizontalHeader()->setFixedHeight(fm.height() + 16);
+    tblAssignments->setSelectionMode(QAbstractItemView::SingleSelection);
+    tblAssignments->setAlternatingRowColors(true);
     v->addWidget(new QLabel("Доступные задания:"));
     v->addWidget(tblAssignments, 1);
 
@@ -65,6 +74,14 @@ StudentWindow::StudentWindow(int studentId, QWidget *parent)
     v->addWidget(new QLabel("Мои отправления:"));
     v->addWidget(tblMySubmissions, 1);
 
+    QFont tf2 = tblMySubmissions->font();
+    tf2.setPointSize(10);
+    tblMySubmissions->setFont(tf2);
+    QFontMetrics fm2(tf2);
+    tblMySubmissions->verticalHeader()->setDefaultSectionSize(fm2.height() + 12);
+    tblMySubmissions->horizontalHeader()->setFixedHeight(fm2.height() + 16);
+    tblMySubmissions->setSelectionMode(QAbstractItemView::SingleSelection);
+    tblMySubmissions->setAlternatingRowColors(true);
     // Download my submission button
     auto h2 = new QHBoxLayout();
     auto btnDownloadMy = new QPushButton("Скачать выбранную отправку", this);

@@ -1,0 +1,18 @@
+/* dark.qss — темная тема */
+* { font-family: "Segoe UI", "Roboto", "Noto Sans", sans-serif; color: #E6EEF3; }
+QWidget { background: #0F1720; }
+QFrame, QGroupBox { background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #0f1820, stop:1 #151a22); border-radius: 10px; margin: 6px; padding: 6px; }
+QPushButton { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #1E2A35, stop:1 #26333D); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 12px; color: #E6EEF3; min-height: 28px; }
+QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2a3942, stop:1 #2e4450); border: 1px solid rgba(46,196,182,0.5); color: #EAF8F6; }
+QPushButton:pressed { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #23303a, stop:1 #24353c); padding-top: 9px; }
+QPushButton#accentButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #2EC4B6, stop:1 #4EA8FF); color: #051018; font-weight: 600; }
+QLabel { color: #CFEAF3; }
+QLineEdit, QPlainTextEdit, QTextEdit { background: #0C1216; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 6px; color: #E6EEF3; }
+QTableWidget, QTableView { background: transparent; gridline-color: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; selection-background-color: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 rgba(78,168,255,0.15), stop:1 rgba(46,196,182,0.12)); selection-color: #E6EEF3; }
+QHeaderView::section { background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #11161a, stop:1 #151a22); color: #9FB2C8; padding: 6px; border: none; border-bottom: 1px solid rgba(255,255,255,0.04); }
+QTableWidget::item { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.02); }
+QTableWidget::item:selected { background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 rgba(78,168,255,0.18), stop:1 rgba(46,196,182,0.14)); }
+QDialog { background: #0F1720; border-radius: 8px; }
+QScrollBar:vertical { background: transparent; width: 10px; } 
+QScrollBar::handle:vertical { background: rgba(255,255,255,0.08); border-radius: 5px; }
+QToolTip { background-color: #202935; color: #E6EEF3; border: 1px solid rgba(255,255,255,0.06); padding: 6px; border-radius: 6px; }

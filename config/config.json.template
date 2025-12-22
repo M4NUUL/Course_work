@@ -1,0 +1,11 @@
+{
+  "master_key_hex": "YOUR_MASTER_KEY_HEX_GOES_HERE",
+  "pbkdf2_iterations": 100000,
+  "db": {
+    "host": "localhost",
+    "port": 5432,
+    "name": "jumandgi",
+    "user": "jumandgi_user",
+    "password": "changeme"
+  }
+}

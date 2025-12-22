@@ -30,4 +30,7 @@ go.work.sum
 # Editor/IDE
 # .idea/
 .vscode/
+
+# Un usefull folder/folder that will be created
 build/
+logs/

@@ -3,9 +3,9 @@
 #include "config/ConfigManager.hpp"
 #include "gui/LoginWindow.hpp"
 #include "gui/MainWindow.hpp"
-#include "gui/AdminWindow.hpp"     // добавьте
-#include "gui/TeacherWindow.hpp"   // уже мог быть
-#include "gui/StudentWindow.hpp"   // если добавлен
+#include "gui/AdminWindow.hpp"
+#include "gui/TeacherWindow.hpp"
+#include "gui/StudentWindow.hpp"
 
 #include <QDebug>
 
@@ -25,22 +25,14 @@ int main(int argc, char *argv[]) {
     LoginWindow *login = new LoginWindow();
     login->show();
 
-    // Подключаем сигнал loginSuccess
+    // Подключаем сигнал loginSuccess -> теперь создаём MainWindow, а не отдельные role-windows
     QObject::connect(login, &LoginWindow::loginSuccess, [login](int userId, const QString &role) {
-        if (role == "admin") {
-            AdminWindow *aw = new AdminWindow(userId);
-            aw->setAttribute(Qt::WA_DeleteOnClose);
-            aw->show();
-        } else if (role == "teacher") {
-            TeacherWindow *tw = new TeacherWindow(userId);
-            tw->setAttribute(Qt::WA_DeleteOnClose);
-            tw->show();
-        } else { // student
-            StudentWindow *sw = new StudentWindow(userId);
-            sw->setAttribute(Qt::WA_DeleteOnClose);
-            sw->show();
-        }
-        // Закрываем окно логина (используем ->
+        // Создаём единое главное окно, которое содержит интерфейс в зависимости от роли
+        MainWindow *mw = new MainWindow(userId, role);
+        mw->setAttribute(Qt::WA_DeleteOnClose);
+        mw->show();
+
+        // Закрываем окно логина
         login->close();
     });
 

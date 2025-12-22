@@ -1,12 +1,12 @@
 #include "AdminWindow.hpp"
 #include "../db/Database.hpp"
+#include "../auth/AuthManager.hpp"
 #include "../utils/Logger.hpp"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSqlQuery>
 #include <QSqlError>
-#include "../auth/AuthManager.hpp"
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QLabel>
@@ -22,23 +22,21 @@ AdminWindow::AdminWindow(int adminId, QWidget *parent)
 
     auto v = new QVBoxLayout(this);
 
-    // Users table
+    // Users table: ID, Login, Full name, Role, Group
     tblUsers = new QTableWidget(this);
-    tblUsers->setColumnCount(4);
-    tblUsers->setHorizontalHeaderLabels({"ID","Login","Full name","Role"});
+    tblUsers->setColumnCount(5);
+    tblUsers->setHorizontalHeaderLabels({"ID","Login","Full name","Role","Group"});
     tblUsers->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblUsers->horizontalHeader()->setStretchLastSection(true);
     v->addWidget(new QLabel("Пользователи:"));
     v->addWidget(tblUsers, 1);
 
-    // Buttons row
+    // Buttons row (no disciplines / no admin-create-assignment)
     auto h = new QHBoxLayout();
     btnCreateUser = new QPushButton("Создать пользователя", this);
     btnEditUser = new QPushButton("Редактировать", this);
     btnToggleActive = new QPushButton("Актив/Деактив", this);
     btnDeleteUser = new QPushButton("Удалить пользователя", this);
-    btnCreateDiscipline = new QPushButton("Создать дисциплину", this);
-    btnCreateAssignment = new QPushButton("Создать задание", this);
     btnRefresh = new QPushButton("Обновить", this);
 
     h->addWidget(btnCreateUser);
@@ -46,8 +44,6 @@ AdminWindow::AdminWindow(int adminId, QWidget *parent)
     h->addWidget(btnToggleActive);
     h->addWidget(btnDeleteUser);
     h->addStretch();
-    h->addWidget(btnCreateDiscipline);
-    h->addWidget(btnCreateAssignment);
     h->addWidget(btnRefresh);
 
     v->addLayout(h);
@@ -57,8 +53,6 @@ AdminWindow::AdminWindow(int adminId, QWidget *parent)
     connect(btnEditUser, &QPushButton::clicked, this, &AdminWindow::onEditUser);
     connect(btnToggleActive, &QPushButton::clicked, this, &AdminWindow::onToggleActive);
     connect(btnDeleteUser, &QPushButton::clicked, this, &AdminWindow::onDeleteUser);
-    connect(btnCreateDiscipline, &QPushButton::clicked, this, &AdminWindow::onCreateDiscipline);
-    connect(btnCreateAssignment, &QPushButton::clicked, this, &AdminWindow::onCreateAssignment);
     connect(btnRefresh, &QPushButton::clicked, this, &AdminWindow::onRefresh);
 
     // Initial load
@@ -72,7 +66,8 @@ void AdminWindow::showError(const QString &text) {
 void AdminWindow::loadUsers() {
     tblUsers->setRowCount(0);
     QSqlQuery q(Database::instance().get());
-    if (!q.exec("SELECT id, login, full_name, role FROM users ORDER BY id")) {
+    // left join groups — ensure table groups exists via migration
+    if (!q.exec("SELECT u.id, u.login, u.full_name, u.role, COALESCE(g.name, '') FROM users u LEFT JOIN groups g ON u.group_id = g.id ORDER BY u.id")) {
         showError("Не удалось загрузить пользователей: " + q.lastError().text());
         return;
     }
@@ -83,6 +78,7 @@ void AdminWindow::loadUsers() {
         tblUsers->setItem(r,1, new QTableWidgetItem(q.value(1).toString()));
         tblUsers->setItem(r,2, new QTableWidgetItem(q.value(2).toString()));
         tblUsers->setItem(r,3, new QTableWidgetItem(q.value(3).toString()));
+        tblUsers->setItem(r,4, new QTableWidgetItem(q.value(4).toString()));
         r++;
     }
     tblUsers->resizeColumnsToContents();
@@ -92,21 +88,68 @@ void AdminWindow::onCreateUser() {
     bool ok;
     QString login = QInputDialog::getText(this, "Создать пользователя", "Login:", QLineEdit::Normal, "", &ok);
     if (!ok || login.trimmed().isEmpty()) return;
+
     QString role = QInputDialog::getText(this, "Создать пользователя", "Role (student/teacher/admin):", QLineEdit::Normal, "student", &ok);
     if (!ok || role.trimmed().isEmpty()) return;
+
     QString full = QInputDialog::getText(this, "Создать пользователя", "Full name:", QLineEdit::Normal, "", &ok);
     if (!ok) return;
 
-    // Password prompt
     QString pwd = QInputDialog::getText(this, "Создать пользователя", "Password:", QLineEdit::Password, "", &ok);
     if (!ok || pwd.isEmpty()) return;
 
-    // Create via AuthManager
+    // Choose group (optional)
+    int selectedGroupId = -1;
+    QSqlQuery gq(Database::instance().get());
+    if (gq.exec("SELECT id, name FROM groups ORDER BY name")) {
+        QStringList groupNames;
+        QList<int> groupIds;
+        while (gq.next()) {
+            groupIds << gq.value(0).toInt();
+            groupNames << gq.value(1).toString();
+        }
+        if (!groupNames.isEmpty()) {
+            bool ok2;
+            QString chosen = QInputDialog::getItem(this, "Группа", "Выберите группу (или пусто):", groupNames, 0, true, &ok2);
+            if (ok2 && !chosen.isEmpty()) {
+                int idx = groupNames.indexOf(chosen);
+                if (idx >= 0) selectedGroupId = groupIds[idx];
+            }
+        }
+    }
+
+    // Register via AuthManager
     if (!AuthManager::instance().registerUser(login.toStdString(), role.toStdString(), pwd.toStdString())) {
-        showError("Не удалось создать пользователя (возможно логин уже существует)");
+        showError("Не удалось создать пользователя (возможно логин занят)");
         return;
     }
-    Logger::log(m_adminId, "create_user", QString("login=%1 role=%2").arg(login).arg(role));
+
+    // Get created user's id
+    QSqlQuery q(Database::instance().get());
+    q.prepare("SELECT id FROM users WHERE login = ?");
+    q.addBindValue(login);
+    if (!q.exec() || !q.next()) {
+        showError("Пользователь создан, но не удалось получить id. Проверьте базу.");
+        loadUsers();
+        return;
+    }
+    int newUserId = q.value(0).toInt();
+
+    // Update group_id if chosen
+    if (selectedGroupId != -1) {
+        QSqlQuery uq(Database::instance().get());
+        uq.prepare("UPDATE users SET group_id = ? WHERE id = ?");
+        uq.addBindValue(selectedGroupId);
+        uq.addBindValue(newUserId);
+        if (!uq.exec()) {
+            showError("Пользователь создан, но не удалось назначить группу: " + uq.lastError().text());
+            Logger::log(m_adminId, "create_user_partial", QString("login=%1 id=%2 group_fail=%3").arg(login).arg(newUserId).arg(selectedGroupId));
+            loadUsers();
+            return;
+        }
+    }
+
+    Logger::log(m_adminId, "create_user", QString("id=%1 login=%2 role=%3 group=%4").arg(newUserId).arg(login).arg(role).arg(selectedGroupId));
     loadUsers();
     QMessageBox::information(this,"OK","Пользователь создан");
 }
@@ -118,7 +161,6 @@ void AdminWindow::onToggleActive() {
     int uid = tblUsers->item(row,0)->text().toInt();
 
     QSqlQuery q(Database::instance().get());
-    // flip active
     q.prepare("UPDATE users SET active = NOT active WHERE id = ?");
     q.addBindValue(uid);
     if (!q.exec()) {
@@ -134,9 +176,15 @@ void AdminWindow::onEditUser() {
     if (sel.isEmpty()) { showError("Выберите пользователя"); return; }
     int row = tblUsers->currentRow();
     int uid = tblUsers->item(row,0)->text().toInt();
-    QString login = tblUsers->item(row,1)->text();
-    QString full = tblUsers->item(row,2)->text();
-    QString role = tblUsers->item(row,3)->text();
+
+    QSqlQuery q(Database::instance().get());
+    q.prepare("SELECT login, full_name, role, group_id FROM users WHERE id = ?");
+    q.addBindValue(uid);
+    if (!q.exec() || !q.next()) { showError("Пользователь не найден"); return; }
+    QString login = q.value(0).toString();
+    QString full = q.value(1).toString();
+    QString role = q.value(2).toString();
+    QVariant curGroup = q.value(3);
 
     bool ok;
     QString newFull = QInputDialog::getText(this, "Редактировать", "Full name:", QLineEdit::Normal, full, &ok);
@@ -144,56 +192,42 @@ void AdminWindow::onEditUser() {
     QString newRole = QInputDialog::getText(this, "Редактировать", "Role:", QLineEdit::Normal, role, &ok);
     if (!ok) return;
 
-    QSqlQuery q(Database::instance().get());
-    q.prepare("UPDATE users SET full_name = ?, role = ? WHERE id = ?");
-    q.addBindValue(newFull);
-    q.addBindValue(newRole);
-    q.addBindValue(uid);
-    if (!q.exec()) {
-        showError("Не удалось изменить пользователя: " + q.lastError().text());
-        return;
+    // group selection
+    QSqlQuery gq(Database::instance().get());
+    gq.exec("SELECT id, name FROM groups ORDER BY name");
+    QStringList groupNames;
+    QList<int> groupIds;
+    int defaultIndex = -1;
+    while (gq.next()) {
+        int gid = gq.value(0).toInt();
+        QString gname = gq.value(1).toString();
+        groupIds << gid;
+        groupNames << gname;
+        if (curGroup.isValid() && curGroup.toInt() == gid) defaultIndex = groupNames.size()-1;
     }
+
+    int selectedGroupId = -1;
+    if (!groupNames.isEmpty()) {
+        QString chosen = QInputDialog::getItem(this, "Группа", "Выберите группу (или пусто):", groupNames, qMax(0,defaultIndex), true, &ok);
+        if (!ok) return;
+        if (!chosen.isEmpty()) {
+            int idx = groupNames.indexOf(chosen);
+            if (idx >= 0) selectedGroupId = groupIds[idx];
+        }
+    }
+
+    QSqlQuery uq(Database::instance().get());
+    uq.prepare("UPDATE users SET full_name = ?, role = ?, group_id = ? WHERE id = ?");
+    uq.addBindValue(newFull);
+    uq.addBindValue(newRole);
+    if (selectedGroupId == -1) uq.addBindValue(QVariant(QVariant::Int));
+    else uq.addBindValue(selectedGroupId);
+    uq.addBindValue(uid);
+    if (!uq.exec()) { showError("Не удалось обновить пользователя: " + uq.lastError().text()); return; }
+
     Logger::log(m_adminId, "edit_user", QString("user_id=%1").arg(uid));
     loadUsers();
     QMessageBox::information(this,"OK","Пользователь изменён");
-}
-
-void AdminWindow::onCreateDiscipline() {
-    bool ok;
-    QString name = QInputDialog::getText(this, "Создать направление", "Название:", QLineEdit::Normal, "", &ok);
-    if (!ok || name.trimmed().isEmpty()) return;
-    QString code = QInputDialog::getText(this, "Создать направление", "Код:", QLineEdit::Normal, "", &ok);
-    if (!ok) return;
-
-    QSqlQuery q(Database::instance().get());
-    q.prepare("INSERT INTO disciplines (name, code) VALUES (?, ?)");
-    q.addBindValue(name);
-    q.addBindValue(code);
-    if (!q.exec()) {
-        showError("Не удалось создать направление: " + q.lastError().text());
-        return;
-    }
-    Logger::log(m_adminId, "create_discipline", QString("name=%1 code=%2").arg(name).arg(code));
-    QMessageBox::information(this,"OK","Направление создано");
-}
-
-void AdminWindow::onCreateAssignment() {
-    bool ok;
-    QString title = QInputDialog::getText(this, "Создать задание (админ)", "Заголовок:", QLineEdit::Normal, "", &ok);
-    if (!ok || title.trimmed().isEmpty()) return;
-    QString desc = QInputDialog::getMultiLineText(this, "Создать задание", "Описание:", QString(), &ok);
-    if (!ok) return;
-
-    QSqlQuery q(Database::instance().get());
-    q.prepare("INSERT INTO assignments (title, description, discipline_id, created_by, due_date, created_at) VALUES (?, ?, NULL, NULL, NULL, NOW())");
-    q.addBindValue(title);
-    q.addBindValue(desc);
-    if (!q.exec()) {
-        showError("Не удалось создать задание: " + q.lastError().text());
-        return;
-    }
-    Logger::log(m_adminId, "admin_create_assignment", QString("title=%1").arg(title));
-    QMessageBox::information(this,"OK","Задание создано (без привязки к преподавателю)");
 }
 
 void AdminWindow::onRefresh() {

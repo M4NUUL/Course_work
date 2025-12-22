@@ -1,4 +1,5 @@
 #pragma once
+
 #include <QDialog>
 
 class QLabel;
@@ -12,15 +13,15 @@ public:
     explicit AssignmentDetailDialog(int assignmentId, QWidget *parent = nullptr);
 
 private slots:
-    void onDownloadMaterial();
+    void onFileDoubleClicked(int row, int column);
 
 private:
+    void loadDetails();
+    void loadFiles();
+
     int m_assignmentId;
     QLabel *lblTitle;
-    QLabel *lblDue;
-    QTextEdit *txtDescription;
-    QTableWidget *tblMaterials;
-    QPushButton *btnDownload;
-    void loadAssignment();
-    void loadMaterials();
+    QTextEdit *teDescription;
+    QTableWidget *tblFiles;
+    QPushButton *btnClose;
 };

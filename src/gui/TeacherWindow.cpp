@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QByteArray>
 #include <QFileInfo>
+#include <QFileDialog>
 #include <QDateTime>
 #include <QListWidget>
 #include <QDialog>
@@ -29,12 +30,16 @@
 #include <QTableWidgetItem>
 #include <QProcess>
 #include <QDebug>
+#include <QCryptographicHash>
 
 TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), m_teacherId(teacherId) {
     setWindowTitle("Jumandgi — Интерфейс преподавателя");
     resize(1000,600);
+
     auto v = new QVBoxLayout(this);
     auto htop = new QHBoxLayout();
+
+    // Assignments table
     tblAssignments = new QTableWidget();
     tblAssignments->setColumnCount(2);
     tblAssignments->setHorizontalHeaderLabels({"ID","Задание"});
@@ -43,6 +48,7 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), 
     tblAssignments->horizontalHeader()->setStretchLastSection(true);
     connect(tblAssignments, &QTableWidget::cellClicked, this, &TeacherWindow::onAssignmentSelected);
 
+    // Submissions table
     tblSubmissions = new QTableWidget();
     tblSubmissions->setColumnCount(5);
     tblSubmissions->setHorizontalHeaderLabels({"ID","Студент","Файл","Загружено","Оценка / Комментарий"});
@@ -53,6 +59,7 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), 
     htop->addWidget(tblAssignments, 1);
     htop->addWidget(tblSubmissions, 2);
 
+    // Buttons
     btnRefresh = new QPushButton("Обновить");
     btnDownload = new QPushButton("Скачать/Открыть");
     btnGrade = new QPushButton("Оценить / Комментарий");
@@ -85,7 +92,10 @@ void TeacherWindow::loadAssignments() {
     QSqlQuery q(db);
     q.prepare("SELECT id, title FROM assignments WHERE created_by = ?");
     q.addBindValue(m_teacherId);
-    if (!q.exec()) { QMessageBox::warning(this, "Ошибка", "Не удалось загрузить задания: " + q.lastError().text()); return; }
+    if (!q.exec()) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось загрузить задания: " + q.lastError().text());
+        return;
+    }
     int row = 0;
     while (q.next()) {
         tblAssignments->insertRow(row);
@@ -113,9 +123,13 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
     clearSubmissions();
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
+    // Select grade and feedback and file_path for download
     q.prepare("SELECT s.id, u.login, s.original_name, s.uploaded_at, s.grade, s.feedback, s.file_path FROM submissions s LEFT JOIN users u ON s.student_id = u.id WHERE s.assignment_id = ?");
     q.addBindValue(assignmentId);
-    if (!q.exec()) { QMessageBox::warning(this, "Ошибка", "Не удалось загрузить отправления: " + q.lastError().text()); return; }
+    if (!q.exec()) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось загрузить отправления: " + q.lastError().text());
+        return;
+    }
     int row = 0;
     while (q.next()) {
         tblSubmissions->insertRow(row);
@@ -131,7 +145,7 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
             gf += feedback;
         }
         tblSubmissions->setItem(row,4, new QTableWidgetItem(gf));
-        // store file_path
+        // store file_path for download in UserRole of column 2
         tblSubmissions->item(row,2)->setData(Qt::UserRole, q.value(6).toString());
         row++;
     }
@@ -148,10 +162,14 @@ void TeacherWindow::onDownloadSubmission() {
     QSqlQuery q(db);
     q.prepare("SELECT file_path, original_name FROM submissions WHERE id = ?");
     q.addBindValue(subId);
-    if (!q.exec() || !q.next()) { QMessageBox::warning(this,"Ошибка","Запись не найдена"); return; }
+    if (!q.exec() || !q.next()) {
+        QMessageBox::warning(this,"Ошибка","Запись не найдена");
+        return;
+    }
     QString filePath = q.value(0).toString();
     QString originalName = q.value(1).toString();
 
+    // Read metadata and decrypt key
     QString uuid = QFileInfo(filePath).baseName();
     QString metaPath = QString("storage/metadata/%1.json").arg(uuid);
     QFile mf(metaPath);
@@ -243,6 +261,26 @@ void TeacherWindow::onCreateAssignment() {
     if (!ok) return;
     QDateTime due = QDateTime::currentDateTime().addDays(days);
 
+    // choose group (optional)
+    int chosenGroupId = -1;
+    QSqlQuery gq(Database::instance().get());
+    if (gq.exec("SELECT id, name FROM groups ORDER BY name")) {
+        QStringList groupNames;
+        QList<int> groupIds;
+        while (gq.next()) {
+            groupIds << gq.value(0).toInt();
+            groupNames << gq.value(1).toString();
+        }
+        if (!groupNames.isEmpty()) {
+            bool ok2;
+            QString chosen = QInputDialog::getItem(this, "Группа", "Выберите группу (или пусто для индивидуальных студентов):", groupNames, 0, true, &ok2);
+            if (ok2 && !chosen.isEmpty()) {
+                int idx = groupNames.indexOf(chosen);
+                if (idx >= 0) chosenGroupId = groupIds[idx];
+            }
+        }
+    }
+
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
     q.prepare("INSERT INTO assignments (title, description, discipline_id, created_by, due_date, created_at) VALUES (?, ?, NULL, ?, ?, NOW()) RETURNING id");
@@ -256,6 +294,15 @@ void TeacherWindow::onCreateAssignment() {
     }
     int assignmentId = q.value(0).toInt();
 
+    if (chosenGroupId != -1) {
+        QSqlQuery agq(db);
+        agq.prepare("INSERT INTO assignment_groups (assignment_id, group_id) VALUES (?, ?) ON CONFLICT DO NOTHING");
+        agq.addBindValue(assignmentId);
+        agq.addBindValue(chosenGroupId);
+        agq.exec();
+    }
+
+    // choose specific students (optional)
     QSqlQuery sq(db);
     sq.prepare("SELECT id, login, full_name FROM users WHERE role = 'student' ORDER BY id");
     if (!sq.exec()) {
@@ -264,7 +311,7 @@ void TeacherWindow::onCreateAssignment() {
     }
 
     QDialog dlg(this);
-    dlg.setWindowTitle("Выберите студентов (оставьте пустым для всех)");
+    dlg.setWindowTitle("Выберите студентов (оставьте пустым для всех/группы)");
     QVBoxLayout *vl = new QVBoxLayout(&dlg);
     QListWidget *lw = new QListWidget(&dlg);
     lw->setSelectionMode(QAbstractItemView::NoSelection);
@@ -292,29 +339,45 @@ void TeacherWindow::onCreateAssignment() {
     connect(btnOk, &QPushButton::clicked, &dlg, &QDialog::accept);
     connect(btnCancel, &QPushButton::clicked, &dlg, &QDialog::reject);
 
+    QList<int> chosen;
     if (dlg.exec() == QDialog::Accepted) {
-        QList<int> chosen;
         for (int i=0;i<lw->count();++i) {
             QListWidgetItem *it = lw->item(i);
-            if (it->checkState() == Qt::Checked) {
-                chosen.append(it->data(Qt::UserRole).toInt());
-            }
-        }
-
-        if (!chosen.isEmpty()) {
-            QSqlQuery insertq(db);
-            insertq.prepare("INSERT INTO assignment_students (assignment_id, student_id) VALUES (?, ?) ON CONFLICT DO NOTHING");
-            for (int sid : chosen) {
-                insertq.bindValue(0, assignmentId);
-                insertq.bindValue(1, sid);
-                if (!insertq.exec()) {
-                    QMessageBox::warning(this,"Ошибка","Не удалось назначить студентов: " + insertq.lastError().text());
-                }
-            }
+            if (it->checkState() == Qt::Checked) chosen.append(it->data(Qt::UserRole).toInt());
         }
     }
 
-    Logger::log(m_teacherId, "create_assignment", QString("title=%1 assignment_id=%2").arg(title).arg(assignmentId));
+    if (!chosen.isEmpty()) {
+        QSqlQuery insertq(db);
+        insertq.prepare("INSERT INTO assignment_students (assignment_id, student_id) VALUES (?, ?) ON CONFLICT DO NOTHING");
+        for (int sid : chosen) {
+            insertq.bindValue(0, assignmentId);
+            insertq.bindValue(1, sid);
+            insertq.exec();
+        }
+    }
+
+    // attach file
+    QString attached = QFileDialog::getOpenFileName(this, "Прикрепить файл к заданию (необязательно)");
+    if (!attached.isEmpty()) {
+        QDir().mkpath("storage/assignments");
+        QString uidSrc = title + QDateTime::currentDateTime().toString() + QString::number(assignmentId);
+        QString uuid = QString::fromUtf8(QCryptographicHash::hash(uidSrc.toUtf8(), QCryptographicHash::Md5).toHex());
+        QString target = QString("storage/assignments/%1_%2").arg(uuid).arg(QFileInfo(attached).fileName());
+        if (QFile::copy(attached, target)) {
+            QSqlQuery fq(db);
+            fq.prepare("INSERT INTO assignment_files (assignment_id, file_path, original_name, uploaded_by, uploaded_at) VALUES (?, ?, ?, ?, NOW())");
+            fq.addBindValue(assignmentId);
+            fq.addBindValue(QFileInfo(target).fileName());
+            fq.addBindValue(QFileInfo(attached).fileName());
+            fq.addBindValue(m_teacherId);
+            fq.exec();
+        } else {
+            QMessageBox::warning(this,"Ошибка","Не удалось сохранить прикреплённый файл");
+        }
+    }
+
+    Logger::log(m_teacherId, "create_assignment", QString("title=%1 assignment_id=%2 group_id=%3 students=%4").arg(title).arg(assignmentId).arg(chosenGroupId).arg(QString::number(chosen.size())));
     loadAssignments();
     QMessageBox::information(this,"OK","Задание создано");
 }

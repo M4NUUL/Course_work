@@ -14,8 +14,6 @@ private slots:
     void onCreateUser();
     void onToggleActive();
     void onEditUser();
-    void onCreateDiscipline();
-    void onCreateAssignment();
     void onRefresh();
     void onDeleteUser();
 
@@ -25,10 +23,8 @@ private:
     QPushButton *btnCreateUser;
     QPushButton *btnEditUser;
     QPushButton *btnToggleActive;
-    QPushButton *btnCreateDiscipline;
-    QPushButton *btnCreateAssignment;
-    QPushButton *btnRefresh;
     QPushButton *btnDeleteUser;
+    QPushButton *btnRefresh;
 
     void showError(const QString &text);
 };

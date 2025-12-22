@@ -240,11 +240,27 @@ void StudentWindow::onDownloadMySubmission() {
         }
     }
 
-    bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath));
+    // гарантируем абсолютный путь
+QFileInfo tf(tmpPath);
+QString absTmp = tf.absoluteFilePath();
+if (absTmp.isEmpty()) absTmp = tmpPath;
+
+// поставим права на чтение для текущего пользователя (и группы/остальных по желанию)
+QFile::Permissions perms = QFile::permissions(absTmp);
+perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther;
+QFile::setPermissions(absTmp, perms);
+
+// Попробуем сначала надежно запустить xdg-open (часто работает лучше в окружениях Linux)
+bool launched = QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp);
+if (!launched) {
+    // Если xdg-open не сработал, пробуем QDesktopServices
+    bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp));
     if (!opened) {
-        if (!QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << tmpPath)) {
-            QMessageBox::warning(this, "Ошибка", "Не удалось открыть файл: " + tmpPath);
-            return;
-        }
+        // Оба варианта не сработали — покажем пользователю путь, чтобы он открыл вручную
+        QMessageBox::warning(this, "Ошибка", "Не удалось автоматически открыть файл. Откройте вручную: " + absTmp);
+        qWarning() << "Failed to open file with xdg-open and QDesktopServices:" << absTmp;
+        return;
     }
+}
+
 }

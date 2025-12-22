@@ -1,30 +1,56 @@
 #include "MainWindow.hpp"
+
+#include "LoginWindow.hpp"
 #include "TeacherWindow.hpp"
+#include "StudentWindow.hpp"
 #include "AdminWindow.hpp"
+
 #include <QVBoxLayout>
-#include <QLabel>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QWidget>
 
 MainWindow::MainWindow(int userId, const QString &role, QWidget *parent)
-    : QMainWindow(parent), m_userId(userId), m_role(role) {
-    setWindowTitle("Jumandgi — Главная");
-    resize(900,600);
-    QWidget *central = new QWidget();
-    auto v = new QVBoxLayout(central);
-    auto label = new QLabel(QString("Добро пожаловать, пользователь %1 (роль: %2)").arg(userId).arg(role));
-    v->addWidget(label);
-    setCentralWidget(central);
+    : QMainWindow(parent), m_userId(userId), m_role(role)
+{
+    setupUi();
+}
 
+void MainWindow::setupUi() {
+    QWidget *central = new QWidget(this);
+    setCentralWidget(central);
+    auto v = new QVBoxLayout(central);
+
+    // Top bar
+    auto topBar = new QHBoxLayout();
+    topBar->addStretch();
+    btnLogout = new QPushButton("Выйти", this);
+    topBar->addWidget(btnLogout);
+    v->addLayout(topBar);
+
+    // Content area
     if (m_role == "teacher") {
-        TeacherWindow *tw = new TeacherWindow(m_userId);
-        tw->setAttribute(Qt::WA_DeleteOnClose);
-        tw->show();
+        TeacherWindow *tw = new TeacherWindow(m_userId, this);
+        v->addWidget(tw, 1);
+    } else if (m_role == "student") {
+        StudentWindow *sw = new StudentWindow(m_userId, this);
+        v->addWidget(sw, 1);
     } else if (m_role == "admin") {
-        AdminWindow *aw = new AdminWindow(m_userId);
-        aw->setAttribute(Qt::WA_DeleteOnClose);
-        aw->show();
+        AdminWindow *aw = new AdminWindow(m_userId, this);
+        v->addWidget(aw, 1);
     } else {
-        // студентский интерфейс по желанию
+        // role unknown - show message
+        v->addWidget(new QLabel(QString("Unknown role: %1").arg(m_role), this));
     }
 
-    // admin and student windows can be implemented similarly
+    connect(btnLogout, &QPushButton::clicked, this, &MainWindow::onLogout);
+}
+
+void MainWindow::onLogout() {
+    // Create a fresh LoginWindow and close this MainWindow
+    LoginWindow *login = new LoginWindow();
+    login->setAttribute(Qt::WA_DeleteOnClose);
+    login->show();
+
+    this->close();
 }

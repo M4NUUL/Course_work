@@ -27,6 +27,7 @@
 #include <QPushButton>
 #include <QHeaderView>
 #include <QTableWidgetItem>
+#include <QProcess>
 #include <QDebug>
 
 TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), m_teacherId(teacherId) {
@@ -44,7 +45,7 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), 
 
     tblSubmissions = new QTableWidget();
     tblSubmissions->setColumnCount(5);
-    tblSubmissions->setHorizontalHeaderLabels({"ID","Студент","Файл","Загружено","Оценка"});
+    tblSubmissions->setHorizontalHeaderLabels({"ID","Студент","Файл","Загружено","Оценка / Комментарий"});
     tblSubmissions->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblSubmissions->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblSubmissions->horizontalHeader()->setStretchLastSection(true);
@@ -112,7 +113,7 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
     clearSubmissions();
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
-    q.prepare("SELECT s.id, u.login, s.original_name, s.uploaded_at, s.grade FROM submissions s LEFT JOIN users u ON s.student_id = u.id WHERE s.assignment_id = ?");
+    q.prepare("SELECT s.id, u.login, s.original_name, s.uploaded_at, s.grade, s.feedback, s.file_path FROM submissions s LEFT JOIN users u ON s.student_id = u.id WHERE s.assignment_id = ?");
     q.addBindValue(assignmentId);
     if (!q.exec()) { QMessageBox::warning(this, "Ошибка", "Не удалось загрузить отправления: " + q.lastError().text()); return; }
     int row = 0;
@@ -122,7 +123,16 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
         tblSubmissions->setItem(row,1, new QTableWidgetItem(q.value(1).toString()));
         tblSubmissions->setItem(row,2, new QTableWidgetItem(q.value(2).toString()));
         tblSubmissions->setItem(row,3, new QTableWidgetItem(q.value(3).toString()));
-        tblSubmissions->setItem(row,4, new QTableWidgetItem(q.value(4).toString()));
+        QString grade = q.value(4).isNull() ? QString() : q.value(4).toString();
+        QString feedback = q.value(5).isNull() ? QString() : q.value(5).toString();
+        QString gf = grade;
+        if (!feedback.isEmpty()) {
+            if (!gf.isEmpty()) gf += " / ";
+            gf += feedback;
+        }
+        tblSubmissions->setItem(row,4, new QTableWidgetItem(gf));
+        // store file_path
+        tblSubmissions->item(row,2)->setData(Qt::UserRole, q.value(6).toString());
         row++;
     }
     tblSubmissions->resizeColumnsToContents();
@@ -175,6 +185,7 @@ void TeacherWindow::onDownloadSubmission() {
     if (!QFileInfo::exists(encFilePath)) { QMessageBox::warning(this,"Ошибка","Зашифрованный файл не найден"); return; }
 
     QString tmpPath = QDir::temp().filePath(QString("jumandgi_sub_%1_%2").arg(subId).arg(originalName));
+    tmpPath = tmpPath.replace("/", "_");
     QFile::remove(tmpPath);
 
     std::string serr;
@@ -183,9 +194,12 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath))) {
-        QMessageBox::warning(this,"Ошибка","Не удалось открыть файл: " + tmpPath);
-        return;
+    bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath));
+    if (!opened) {
+        if (!QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << tmpPath)) {
+            QMessageBox::warning(this,"Ошибка","Не удалось открыть файл: " + tmpPath);
+            return;
+        }
     }
 
     Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(tmpPath));
@@ -200,7 +214,8 @@ void TeacherWindow::onGradeSubmission() {
     bool ok;
     QString grade = QInputDialog::getText(this, "Оценка", "Введите оценку:", QLineEdit::Normal, "", &ok);
     if (!ok) return;
-    QString feedback = QInputDialog::getMultiLineText(this, "Комментарий", "Комментарий к работе:");
+    QString feedback = QInputDialog::getMultiLineText(this, "Комментарий", "Комментарий к работе:", QString(), &ok);
+    if (!ok) return;
 
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
@@ -221,7 +236,8 @@ void TeacherWindow::onCreateAssignment() {
     QString title = QInputDialog::getText(this, "Создать задание", "Заголовок:", QLineEdit::Normal, "", &ok);
     if (!ok || title.trimmed().isEmpty()) return;
 
-    QString desc = QInputDialog::getMultiLineText(this, "Описание", "Описание задания:");
+    QString desc = QInputDialog::getMultiLineText(this, "Описание", "Описание задания:", QString(), &ok);
+    if (!ok) return;
 
     int days = QInputDialog::getInt(this, "Дедлайн", "Через сколько дней дедлайн? (дней)", 7, 0, 3650, 1, &ok);
     if (!ok) return;

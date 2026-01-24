@@ -1,4 +1,8 @@
 #include <QApplication>
+#include <QDebug>
+
+#include <sodium.h>
+
 #include "db/Database.hpp"
 #include "config/ConfigManager.hpp"
 #include "gui/LoginWindow.hpp"
@@ -7,36 +11,48 @@
 #include "gui/TeacherWindow.hpp"
 #include "gui/StudentWindow.hpp"
 
-#include <QDebug>
-
 int main(int argc, char *argv[]) {
     QApplication a(argc, argv);
 
-    if (!ConfigManager::instance().load("config/config.json")) {
-        qWarning() << "Не удалось загрузить configuration file config/config.json";
-    }
-
-    if (!Database::instance().open()) {
-        qCritical() << "Не удалось открыть базу данных PostgreSQL. Проверьте config/config.json и доступность сервера.";
+    // Инициализация libsodium (криптобиблиотека)
+    if (sodium_init() == -1) {
+        qCritical() << "Ошибка: sodium_init() failed";
         return 1;
     }
 
-    // Создаём LoginWindow как указатель (чтобы лямбда могла вызывать login->close())
+    // Загрузка конфигурационного файла (config/config.json)
+    if (!ConfigManager::instance().load("config/config.json")) {
+        qCritical() << "Ошибка: не удалось загрузить config/config.json";
+        return 1;
+    }
+
+    // Подключение к PostgreSQL (параметры берутся из config.json)
+    if (!Database::instance().open()) {
+        qCritical() << "Ошибка: не удалось открыть базу PostgreSQL. Проверьте параметры подключения";
+        return 1;
+    }
+
+    // Создание окна авторизации
     LoginWindow *login = new LoginWindow();
     login->show();
 
-    // Подключаем сигнал loginSuccess -> теперь создаём MainWindow, а не отдельные role-windows
-    QObject::connect(login, &LoginWindow::loginSuccess, [login](int userId, const QString &role) {
-        // Создаём единое главное окно, которое содержит интерфейс в зависимости от роли
+    // Привязка сигнала успешного входа -> переключение в главное окно
+    QObject::connect(login, &LoginWindow::loginSuccess,
+                     [login](int userId, const QString &role) {
+
+        // Создание основного окна (интерфейс зависит от роли пользователя)
         MainWindow *mw = new MainWindow(userId, role);
         mw->setAttribute(Qt::WA_DeleteOnClose);
         mw->show();
 
-        // Закрываем окно логина
+        // Закрытие окна логина
         login->close();
     });
 
+    // Запуск цикла обработки событий Qt
     int res = a.exec();
+
+    // Завершение работы: закрытие соединения с БД
     Database::instance().close();
     return res;
 }

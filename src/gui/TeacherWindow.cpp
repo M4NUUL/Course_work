@@ -132,23 +132,39 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
     }
     int row = 0;
     while (q.next()) {
-        tblSubmissions->insertRow(row);
-        tblSubmissions->setItem(row,0, new QTableWidgetItem(QString::number(q.value(0).toInt())));
-        tblSubmissions->setItem(row,1, new QTableWidgetItem(q.value(1).toString()));
-        tblSubmissions->setItem(row,2, new QTableWidgetItem(q.value(2).toString()));
-        tblSubmissions->setItem(row,3, new QTableWidgetItem(q.value(3).toString()));
-        QString grade = q.value(4).isNull() ? QString() : q.value(4).toString();
-        QString feedback = q.value(5).isNull() ? QString() : q.value(5).toString();
-        QString gf = grade;
-        if (!feedback.isEmpty()) {
-            if (!gf.isEmpty()) gf += " / ";
-            gf += feedback;
-        }
-        tblSubmissions->setItem(row,4, new QTableWidgetItem(gf));
-        // store file_path for download in UserRole of column 2
-        tblSubmissions->item(row,2)->setData(Qt::UserRole, q.value(6).toString());
-        row++;
+    tblSubmissions->insertRow(row);
+
+    int subId      = q.value(0).toInt();
+    QString login  = q.value(1).toString();
+    QString orig   = q.value(2).toString();
+    QVariant uploadedVar = q.value(3);
+
+    QString uploadedText;
+    if (uploadedVar.canConvert<QDateTime>()) {
+        QDateTime dt = uploadedVar.toDateTime().toLocalTime();
+        uploadedText = dt.toString("dd.MM.yyyy HH:mm");
+    } else {
+        uploadedText = uploadedVar.toString();
     }
+
+    QString grade    = q.value(4).isNull() ? QString() : q.value(4).toString();
+    QString feedback = q.value(5).isNull() ? QString() : q.value(5).toString();
+    QString gf = grade;
+    if (!feedback.isEmpty()) {
+        if (!gf.isEmpty()) gf += " / ";
+        gf += feedback;
+    }
+
+    tblSubmissions->setItem(row, 0, new QTableWidgetItem(QString::number(subId)));
+    tblSubmissions->setItem(row, 1, new QTableWidgetItem(login));
+    tblSubmissions->setItem(row, 2, new QTableWidgetItem(orig));
+    tblSubmissions->setItem(row, 3, new QTableWidgetItem(uploadedText));
+    tblSubmissions->setItem(row, 4, new QTableWidgetItem(gf));
+
+    tblSubmissions->item(row, 2)->setData(Qt::UserRole, q.value(6).toString());
+    ++row;
+    }
+
     tblSubmissions->resizeColumnsToContents();
 }
 
@@ -212,13 +228,44 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath));
-    if (!opened) {
-        if (!QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << tmpPath)) {
-            QMessageBox::warning(this,"Ошибка","Не удалось открыть файл: " + tmpPath);
-            return;
-        }
+        // гарантируем абсолютный путь
+    QFileInfo tf(tmpPath);
+    QString absTmp = tf.absoluteFilePath();
+    if (absTmp.isEmpty()) absTmp = tmpPath;
+
+    // права на чтение
+    QFile::Permissions perms = QFile::permissions(absTmp);
+    perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner
+          | QFileDevice::ReadGroup | QFileDevice::ReadOther;
+    QFile::setPermissions(absTmp, perms);
+
+    // 1) пробуем xdg-open
+    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) {
+        Logger::log(m_teacherId, "download_submission",
+                    QString("submission_id=%1 path=%2 (xdg-open)").arg(subId).arg(absTmp));
+        return;
     }
+
+    // 2) пробуем gedit
+    if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << absTmp)) {
+        Logger::log(m_teacherId, "download_submission",
+                    QString("submission_id=%1 path=%2 (gedit)").arg(subId).arg(absTmp));
+        return;
+    }
+
+    // 3) пробуем QDesktopServices
+    if (QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp))) {
+        Logger::log(m_teacherId, "download_submission",
+                    QString("submission_id=%1 path=%2 (QDesktopServices)").arg(subId).arg(absTmp));
+        return;
+    }
+
+    // 4) совсем не повезло
+    QMessageBox::warning(this, "Ошибка",
+                         "Не удалось автоматически открыть файл. Откройте вручную: " + absTmp);
+    qWarning() << "Failed to open file:" << absTmp;
+    Logger::log(m_teacherId, "download_submission_fail",
+                QString("submission_id=%1 path=%2").arg(subId).arg(absTmp));
 
     Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(tmpPath));
 }

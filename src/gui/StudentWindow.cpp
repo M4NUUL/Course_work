@@ -29,6 +29,9 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QDebug>
+#include <QDateTime>
+#include <QFile>
+#include <QFileDevice>
 
 StudentWindow::StudentWindow(int studentId, QWidget *parent)
     : QWidget(parent), m_studentId(studentId)
@@ -96,12 +99,26 @@ void StudentWindow::loadAssignments() {
 
     int r = 0;
     while (q.next()) {
-        tblAssignments->insertRow(r);
-        tblAssignments->setItem(r,0, new QTableWidgetItem(QString::number(q.value(0).toInt())));
-        tblAssignments->setItem(r,1, new QTableWidgetItem(q.value(1).toString()));
-        tblAssignments->setItem(r,2, new QTableWidgetItem(q.value(2).toString()));
-        r++;
+    tblAssignments->insertRow(r);
+
+    int id = q.value(0).toInt();
+    QString title = q.value(1).toString();
+    QVariant dueVar = q.value(2);
+
+    QString deadlineText;
+    if (dueVar.canConvert<QDateTime>()) {
+        QDateTime dt = dueVar.toDateTime().toLocalTime();
+        deadlineText = dt.toString("dd.MM.yyyy HH:mm");
+    } else {
+        deadlineText = dueVar.toString();
     }
+
+    tblAssignments->setItem(r, 0, new QTableWidgetItem(QString::number(id)));
+    tblAssignments->setItem(r, 1, new QTableWidgetItem(title));
+    tblAssignments->setItem(r, 2, new QTableWidgetItem(deadlineText));
+    ++r;
+    }
+
     tblAssignments->resizeColumnsToContents();
 }
 
@@ -116,17 +133,35 @@ void StudentWindow::loadMySubmissions() {
     }
     int r = 0;
     while (q.next()) {
-        tblMySubmissions->insertRow(r);
-        tblMySubmissions->setItem(r,0, new QTableWidgetItem(QString::number(q.value(0).toInt())));
-        tblMySubmissions->setItem(r,1, new QTableWidgetItem(QString::number(q.value(1).toInt())));
-        tblMySubmissions->setItem(r,2, new QTableWidgetItem(q.value(2).toString()));
-        tblMySubmissions->setItem(r,3, new QTableWidgetItem(q.value(3).toString()));
-        QString grade = q.value(4).isNull() ? QString() : q.value(4).toString();
-        QString fb = q.value(5).isNull() ? QString() : q.value(5).toString();
-        tblMySubmissions->setItem(r,4, new QTableWidgetItem(grade + (fb.isEmpty() ? "" : " / " + fb)));
-        tblMySubmissions->item(r,2)->setData(Qt::UserRole, q.value(6).toString());
-        r++;
+    tblMySubmissions->insertRow(r);
+
+    int subId        = q.value(0).toInt();
+    int assignmentId = q.value(1).toInt();
+    QString origName = q.value(2).toString();
+    QVariant uploadedVar = q.value(3);
+
+    QString uploadedText;
+    if (uploadedVar.canConvert<QDateTime>()) {
+        QDateTime dt = uploadedVar.toDateTime().toLocalTime();
+        uploadedText = dt.toString("dd.MM.yyyy HH:mm");
+    } else {
+        uploadedText = uploadedVar.toString();
     }
+
+    QString grade = q.value(4).isNull() ? QString() : q.value(4).toString();
+    QString fb    = q.value(5).isNull() ? QString() : q.value(5).toString();
+    QString gf    = grade + (fb.isEmpty() ? "" : " / " + fb);
+
+    tblMySubmissions->setItem(r, 0, new QTableWidgetItem(QString::number(subId)));
+    tblMySubmissions->setItem(r, 1, new QTableWidgetItem(QString::number(assignmentId)));
+    tblMySubmissions->setItem(r, 2, new QTableWidgetItem(origName));
+    tblMySubmissions->setItem(r, 3, new QTableWidgetItem(uploadedText));
+    tblMySubmissions->setItem(r, 4, new QTableWidgetItem(gf));
+
+    tblMySubmissions->item(r, 2)->setData(Qt::UserRole, q.value(6).toString());
+    ++r;
+    }
+
     tblMySubmissions->resizeColumnsToContents();
 }
 
@@ -240,27 +275,37 @@ void StudentWindow::onDownloadMySubmission() {
         }
     }
 
-    // гарантируем абсолютный путь
-QFileInfo tf(tmpPath);
-QString absTmp = tf.absoluteFilePath();
-if (absTmp.isEmpty()) absTmp = tmpPath;
+    // гарантируем абсолютный путь к расшифрованному файлу
+    QFileInfo tf(tmpPath);
+    QString absTmp = tf.absoluteFilePath();
+    if (absTmp.isEmpty()) absTmp = tmpPath;
 
-// поставим права на чтение для текущего пользователя (и группы/остальных по желанию)
-QFile::Permissions perms = QFile::permissions(absTmp);
-perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther;
-QFile::setPermissions(absTmp, perms);
+    // права на чтение
+    QFile::Permissions perms = QFile::permissions(absTmp);
+    perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner
+          | QFileDevice::ReadGroup | QFileDevice::ReadOther;
+    QFile::setPermissions(absTmp, perms);
 
-// Попробуем сначала надежно запустить xdg-open (часто работает лучше в окружениях Linux)
-bool launched = QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp);
-if (!launched) {
-    // Если xdg-open не сработал, пробуем QDesktopServices
-    bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp));
-    if (!opened) {
-        // Оба варианта не сработали — покажем пользователю путь, чтобы он открыл вручную
-        QMessageBox::warning(this, "Ошибка", "Не удалось автоматически открыть файл. Откройте вручную: " + absTmp);
-        qWarning() << "Failed to open file with xdg-open and QDesktopServices:" << absTmp;
+    // 1) пробуем xdg-open
+    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) {
         return;
     }
-}
+
+    // 2) если xdg-open не сработал, пытаемся открыть через gedit
+    if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << absTmp)) {
+        return;
+    }
+
+    // 3) последний вариант — QDesktopServices (на всякий случай)
+    if (QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp))) {
+        return;
+    }
+
+    // 4) ничего не сработало — говорим путь пользователю
+    QMessageBox::warning(this,
+                         "Ошибка",
+                         "Не удалось автоматически открыть файл. Откройте вручную: " + absTmp);
+    qWarning() << "Failed to open decrypted file:" << absTmp;
+
 
 }

@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: jumandgi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jumandgi
+      POSTGRES_USER: jumandgi
+      POSTGRES_PASSWORD: jumandgi_pass
+    volumes:
+      # Данные Postgres (сохраняются между перезапусками)
+      - db_data:/var/lib/postgresql/data
+      # Полная инициализация схемы + процедуры + группы
+      - ./sql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./sql/002_sp.sql:/docker-entrypoint-initdb.d/002_sp.sql:ro
+      - ./sql/003_fix_sp.sql:/docker-entrypoint-initdb.d/003_fix_sp.sql:ro
+      - ./sql/004_groups_and_assignment_groups.sql:/docker-entrypoint-initdb.d/004_groups_and_assignment_groups.sql:ro
+    # Если нужно будет доступаться к БД с хоста — можно вернуть ports
+    #ports:
+    #  - "5432:5432"
+
+  app:
+    build: .
+    container_name: jumandgi-app
+    depends_on:
+      - db
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_QPA_PLATFORM=xcb
+    volumes:
+      # X11 сокет — чтобы Qt рисовал на твоём экране
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      # Подсовываем докер-конфиг как config/config.json внутрь контейнера
+      - ./config/config.docker.json:/app/config/config.json:ro
+
+volumes:
+  db_data:

@@ -17,10 +17,10 @@ bool Database::open() {
     QString user = QString::fromStdString(cfg.dbUser());
     QString pass = QString::fromStdString(cfg.dbPassword());
 
-    if (QSqlDatabase::contains("JumandgiConnection")) {
-        db = QSqlDatabase::database("JumandgiConnection");
+    if (QSqlDatabase::contains("EduDeskConnection")) {
+        db = QSqlDatabase::database("EduDeskConnection");
     } else {
-        db = QSqlDatabase::addDatabase("QPSQL", "JumandgiConnection");
+        db = QSqlDatabase::addDatabase("QPSQL", "EduDeskConnection");
         db.setHostName(host);
         db.setPort(port);
         db.setDatabaseName(dbname);

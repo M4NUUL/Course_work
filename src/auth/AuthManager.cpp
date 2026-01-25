@@ -1,14 +1,14 @@
 #include "AuthManager.hpp"
 #include "PasswordUtils.hpp"
 #include "../db/Database.hpp"
+#include "../config/ConfigManager.hpp"
 
 #include <QSqlQuery>
 #include <QSqlError>
-#include <QVariant>
 #include <QString>
 #include <QDebug>
 
-// Здесь хранится вся логика регистрации и проверки логина/пароля
+// Синглтон менеджера аутентификации
 AuthManager& AuthManager::instance() {
     static AuthManager inst;
     return inst;
@@ -21,39 +21,35 @@ bool AuthManager::registerUser(const std::string &login,
     // Проверка правил сложности пароля
     std::string err;
     if (!auth::validatePasswordRules(password, err)) {
-        qWarning() << "Пароль не проходит правила:" << QString::fromStdString(err);
+        qWarning() << "Password invalid:" << QString::fromStdString(err);
         return false;
     }
 
-    // Хеширование пароля (Argon2id через libsodium)
-    std::string passwordHash;
-    try {
-        passwordHash = auth::hashPassword(password);
-    } catch (const std::exception &ex) {
-        qWarning() << "Ошибка при хешировании пароля:" << ex.what();
-        return false;
+    int iters = ConfigManager::instance().pbkdf2Iterations();
+    if (iters <= 0) {
+        iters = 100000;
     }
 
-    // Подготовка INSERT в таблицу users
+    // Создание PBKDF2-хеша
+    auto pw = auth::createPasswordHash(password, iters);
+
+    QString loginQ = QString::fromStdString(login);
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
 
-    q.prepare("INSERT INTO users "
-              "(login, role, password_hash, salt, created_at, active) "
-              "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, true)");
-
-    q.addBindValue(QString::fromStdString(login));
+    q.prepare(R"SQL(
+        INSERT INTO users (login, role, password_hash, salt, created_at, active)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, true)
+    )SQL");
+    q.addBindValue(loginQ);
     q.addBindValue(QString::fromStdString(role));
-    q.addBindValue(QString::fromStdString(passwordHash));
-    // Поле salt остаётся в схеме, но фактически не используется (libsodium прячет соль внутрь строки)
-    q.addBindValue(QString(""));
+    q.addBindValue(QString::fromStdString(auth::toHex(pw.hash)));
+    q.addBindValue(QString::fromStdString(auth::toHex(pw.salt)));
 
-    // Выполнение INSERT
     if (!q.exec()) {
-        qWarning() << "Ошибка регистрации пользователя:" << q.lastError().text();
+        qWarning() << "Register error:" << q.lastError().text();
         return false;
     }
-
     return true;
 }
 
@@ -62,45 +58,42 @@ bool AuthManager::authenticate(const std::string &login,
                                int &outUserId,
                                std::string &outRole)
 {
-    // Получение записи пользователя по логину
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
 
-    q.prepare("SELECT id, password_hash, role "
-              "FROM users "
-              "WHERE login = ? AND active = true");
+    q.prepare(R"SQL(
+        SELECT id, password_hash, salt, role
+        FROM users
+        WHERE login = ? AND active = true
+    )SQL");
     q.addBindValue(QString::fromStdString(login));
 
     if (!q.exec()) {
-        qWarning() << "Ошибка запроса авторизации:" << q.lastError().text();
+        qWarning() << "Auth query error:" << q.lastError().text();
         return false;
     }
 
-    // Пользователь не найден или не активен
     if (!q.next()) {
         return false;
     }
 
-    int userId        = q.value(0).toInt();
-    QString hashStr   = q.value(1).toString();
-    QString roleStr   = q.value(2).toString();
+    int id          = q.value(0).toInt();
+    QString hashHex = q.value(1).toString();
+    QString saltHex = q.value(2).toString();
+    QString roleQ   = q.value(3).toString();
 
-    // Проверка пароля через libsodium
-    bool ok = false;
-    try {
-        ok = auth::verifyPassword(password, hashStr.toStdString());
-    } catch (const std::exception &ex) {
-        qWarning() << "Ошибка при проверке пароля:" << ex.what();
-        return false;
+    auto hash = auth::fromHex(hashHex.toStdString());
+    auto salt = auth::fromHex(saltHex.toStdString());
+
+    int iters = ConfigManager::instance().pbkdf2Iterations();
+    if (iters <= 0) {
+        iters = 100000;
     }
 
-    if (!ok) {
-        // Неверный пароль
-        return false;
+    if (auth::verifyPassword(password, salt, hash, iters)) {
+        outUserId = id;
+        outRole   = roleQ.toStdString();
+        return true;
     }
-
-    // Заполнение выходных параметров при успешной авторизации
-    outUserId = userId;
-    outRole   = roleStr.toStdString();
-    return true;
+    return false;
 }

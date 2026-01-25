@@ -51,7 +51,7 @@ CREATE TABLE public.assignments (
 );
 
 
-ALTER TABLE public.assignments OWNER TO jumandgi;
+ALTER TABLE public.assignments OWNER TO edudesk;
 
 --
 -- Name: assignments_id_seq; Type: SEQUENCE; Schema: public; Owner: jumandgi
@@ -66,7 +66,7 @@ CREATE SEQUENCE public.assignments_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.assignments_id_seq OWNER TO jumandgi;
+ALTER SEQUENCE public.assignments_id_seq OWNER TO edudesk;
 
 --
 -- Name: assignments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: jumandgi
@@ -88,7 +88,7 @@ CREATE TABLE public.audit_log (
 );
 
 
-ALTER TABLE public.audit_log OWNER TO jumandgi;
+ALTER TABLE public.audit_log OWNER TO edudesk;
 
 --
 -- Name: audit_log_id_seq; Type: SEQUENCE; Schema: public; Owner: jumandgi
@@ -103,7 +103,7 @@ CREATE SEQUENCE public.audit_log_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.audit_log_id_seq OWNER TO jumandgi;
+ALTER SEQUENCE public.audit_log_id_seq OWNER TO edudesk;
 
 --
 -- Name: audit_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: jumandgi
@@ -123,7 +123,7 @@ CREATE TABLE public.disciplines (
 );
 
 
-ALTER TABLE public.disciplines OWNER TO jumandgi;
+ALTER TABLE public.disciplines OWNER TO edudesk;
 
 --
 -- Name: disciplines_id_seq; Type: SEQUENCE; Schema: public; Owner: jumandgi
@@ -138,7 +138,7 @@ CREATE SEQUENCE public.disciplines_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.disciplines_id_seq OWNER TO jumandgi;
+ALTER SEQUENCE public.disciplines_id_seq OWNER TO edudesk;
 
 --
 -- Name: disciplines_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: jumandgi
@@ -163,7 +163,7 @@ CREATE TABLE public.submissions (
 );
 
 
-ALTER TABLE public.submissions OWNER TO jumandgi;
+ALTER TABLE public.submissions OWNER TO edudesk;
 
 --
 -- Name: submissions_id_seq; Type: SEQUENCE; Schema: public; Owner: jumandgi
@@ -178,7 +178,7 @@ CREATE SEQUENCE public.submissions_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.submissions_id_seq OWNER TO jumandgi;
+ALTER SEQUENCE public.submissions_id_seq OWNER TO edudesk;
 
 --
 -- Name: submissions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: jumandgi
@@ -204,7 +204,7 @@ CREATE TABLE public.users (
 );
 
 
-ALTER TABLE public.users OWNER TO jumandgi;
+ALTER TABLE public.users OWNER TO edudesk;
 
 --
 -- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: jumandgi
@@ -219,7 +219,7 @@ CREATE SEQUENCE public.users_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.users_id_seq OWNER TO jumandgi;
+ALTER SEQUENCE public.users_id_seq OWNER TO edudesk;
 
 --
 -- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: jumandgi

@@ -17,7 +17,7 @@
 AdminWindow::AdminWindow(int adminId, QWidget *parent)
     : QWidget(parent), m_adminId(adminId)
 {
-    setWindowTitle("Jumandgi — Администратор");
+    setWindowTitle("EduDesk — Администратор");
     resize(900, 600);
 
     auto v = new QVBoxLayout(this);

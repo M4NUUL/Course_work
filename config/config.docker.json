@@ -1,11 +1,10 @@
 {
   "master_key_hex": "2542c14f6f79eaa2f72a49e0e455ab2d088885563838bfa4479b8a407bd8800c",
-  "pbkdf2_iterations": 100000,
   "db": {
     "host": "db",
     "port": 5432,
-    "name": "jumandgi",
-    "user": "jumandgi",
-    "password": "jumandgi_pass"
+    "name": "edudesk",
+    "user": "edudesk",
+    "password": "edudesk_pass"
   }
 }

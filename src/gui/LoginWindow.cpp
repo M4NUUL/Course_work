@@ -5,7 +5,7 @@
 #include <QMessageBox>
 
 LoginWindow::LoginWindow(QWidget *parent) : QWidget(parent) {
-    setWindowTitle("Jumandgi — Вход");
+    setWindowTitle("EduDesk — Вход");
     auto v = new QVBoxLayout(this);
     editLogin = new QLineEdit();
     editLogin->setPlaceholderText("Логин");

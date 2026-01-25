@@ -1,14 +1,12 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16
-    container_name: jumandgi-db
+    container_name: edudesk-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: jumandgi
-      POSTGRES_USER: jumandgi
-      POSTGRES_PASSWORD: jumandgi_pass
+      POSTGRES_DB: edudesk
+      POSTGRES_USER: edudesk
+      POSTGRES_PASSWORD: edudesk_pass
     volumes:
       # Данные Postgres (сохраняются между перезапусками)
       - db_data:/var/lib/postgresql/data
@@ -23,7 +21,7 @@ services:
 
   app:
     build: .
-    container_name: jumandgi-app
+    container_name: edudesk-app
     depends_on:
       - db
     environment:

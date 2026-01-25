@@ -36,7 +36,7 @@
 StudentWindow::StudentWindow(int studentId, QWidget *parent)
     : QWidget(parent), m_studentId(studentId)
 {
-    setWindowTitle("Jumandgi — Студент");
+    setWindowTitle("EduDesk — Студент");
     resize(900, 700);
 
     auto v = new QVBoxLayout(this);

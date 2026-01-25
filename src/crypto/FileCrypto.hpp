@@ -4,18 +4,21 @@
 
 namespace crypto {
 
-std::vector<unsigned char> genRandomBytes(size_t n);
+/// Генерация случайных байт (libsodium randombytes_buf)
+std::vector<unsigned char> genRandomBytes(std::size_t len);
 
-bool aes256_cbc_encrypt(const std::vector<unsigned char>& key,
-                        const std::vector<unsigned char>& iv,
-                        const std::string& inFile,
-                        const std::string& outFile,
+/// Шифрование файла
+bool aes256_cbc_encrypt(const std::vector<unsigned char> &key,
+                        const std::vector<unsigned char> &iv,
+                        const std::string &inPath,
+                        const std::string &outPath,
                         std::string &err);
 
-bool aes256_cbc_decrypt(const std::vector<unsigned char>& key,
-                        const std::vector<unsigned char>& iv,
-                        const std::string& inFile,
-                        const std::string& outFile,
+/// Расшифровка файла
+bool aes256_cbc_decrypt(const std::vector<unsigned char> &key,
+                        const std::vector<unsigned char> &iv,
+                        const std::string &inPath,
+                        const std::string &outPath,
                         std::string &err);
 
-} // namespace crypto
+}

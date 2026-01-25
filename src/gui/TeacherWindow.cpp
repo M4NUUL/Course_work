@@ -33,7 +33,7 @@
 #include <QCryptographicHash>
 
 TeacherWindow::TeacherWindow(int teacherId, QWidget *parent) : QWidget(parent), m_teacherId(teacherId) {
-    setWindowTitle("Jumandgi — Интерфейс преподавателя");
+    setWindowTitle("EduDesk — Интерфейс преподавателя");
     resize(1000,600);
 
     auto v = new QVBoxLayout(this);

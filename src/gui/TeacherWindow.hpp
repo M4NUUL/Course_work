@@ -21,13 +21,16 @@ private slots:
 
 private:
     int m_teacherId;
-    QTableWidget *tblAssignments;
-    QTableWidget *tblSubmissions;
-    QPushButton *btnRefresh;
-    QPushButton *btnDownload;
-    QPushButton *btnGrade;
-    QPushButton *btnCreateAssignment;
-    QPushButton *btnDeleteAssignment;
+
+    QTableWidget *tblAssignments = nullptr;
+    QTableWidget *tblSubmissions = nullptr;
+
+    QPushButton *btnRefresh = nullptr;
+    QPushButton *btnDownload = nullptr;
+    QPushButton *btnGrade = nullptr;
+    QPushButton *btnCreateAssignment = nullptr;
+    QPushButton *btnDeleteAssignment = nullptr;
+
     int currentAssignmentId = -1;
 
     void clearSubmissions();

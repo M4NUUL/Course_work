@@ -27,4 +27,5 @@ private:
     QPushButton *btnRefresh;
 
     void showError(const QString &text);
+    int selectedUserId() const;
 };

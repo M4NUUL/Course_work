@@ -1,10 +1,10 @@
 {
   "master_key_hex": "2542c14f6f79eaa2f72a49e0e455ab2d088885563838bfa4479b8a407bd8800c",
   "db": {
-    "host": "localhost",
-    "port": 5432,
-    "name": "jumandgi",
-    "user": "m4nuul",
-    "password": "N1k134NuU!"
+    "host": "127.0.0.1",
+    "port": 15432,
+    "name": "edudesk",
+    "user": "edudesk",
+    "password": "edudesk_pass"
   }
 }

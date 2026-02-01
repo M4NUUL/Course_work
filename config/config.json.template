@@ -1,11 +1,10 @@
 {
-  "master_key_hex": "YOUR_MASTER_KEY_HEX_GOES_HERE",
-  "pbkdf2_iterations": 100000,
+  "master_key_hex": "PUT_MASTER_KEY_HERE",
   "db": {
-    "host": "localhost",
+    "host": "127.0.0.1",
     "port": 5432,
-    "name": "jumandgi",
-    "user": "jumandgi_user",
-    "password": "changeme"
+    "name": "edudesk",
+    "user": "edudesk",
+    "password": "edudesk_pass"
   }
 }

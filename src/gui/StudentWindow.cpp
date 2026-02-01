@@ -36,41 +36,42 @@
 StudentWindow::StudentWindow(int studentId, QWidget *parent)
     : QWidget(parent), m_studentId(studentId)
 {
-    setWindowTitle("EduDesk — Студент");
+    setWindowTitle(QStringLiteral("EduDesk — Студент"));
     resize(900, 700);
 
-    auto v = new QVBoxLayout(this);
+    auto *v = new QVBoxLayout(this);
 
-    // Assignments
     tblAssignments = new QTableWidget(this);
-    tblAssignments->setColumnCount(3);
-    tblAssignments->setHorizontalHeaderLabels({"ID","Задание","Дедлайн"});
+    tblAssignments->setColumnCount(2);
+    tblAssignments->setHorizontalHeaderLabels({QStringLiteral("Задание"), QStringLiteral("Дедлайн")});
     tblAssignments->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblAssignments->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblAssignments->horizontalHeader()->setStretchLastSection(true);
-    v->addWidget(new QLabel("Доступные задания:"));
+    v->addWidget(new QLabel(QStringLiteral("Доступные задания:"), this));
     v->addWidget(tblAssignments, 1);
 
-    // Buttons for assignments
-    auto h1 = new QHBoxLayout();
-    btnUpload = new QPushButton("Загрузить работу", this);
+    auto *h1 = new QHBoxLayout();
+    btnUpload = new QPushButton(QStringLiteral("Загрузить работу"), this);
     h1->addWidget(btnUpload);
     h1->addStretch();
     v->addLayout(h1);
 
-    // My submissions
     tblMySubmissions = new QTableWidget(this);
-    tblMySubmissions->setColumnCount(5);
-    tblMySubmissions->setHorizontalHeaderLabels({"ID","Задание","Файл","Загружено","Оценка / Комментарий"});
+    tblMySubmissions->setColumnCount(4);
+    tblMySubmissions->setHorizontalHeaderLabels({
+        QStringLiteral("Задание"),
+        QStringLiteral("Файл"),
+        QStringLiteral("Загружено"),
+        QStringLiteral("Оценка / Комментарий")
+    });
     tblMySubmissions->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblMySubmissions->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblMySubmissions->horizontalHeader()->setStretchLastSection(true);
-    v->addWidget(new QLabel("Мои отправления:"));
+    v->addWidget(new QLabel(QStringLiteral("Мои отправления:"), this));
     v->addWidget(tblMySubmissions, 1);
 
-    // Download my submission button
-    auto h2 = new QHBoxLayout();
-    auto btnDownloadMy = new QPushButton("Скачать выбранную отправку", this);
+    auto *h2 = new QHBoxLayout();
+    auto *btnDownloadMy = new QPushButton(QStringLiteral("Скачать выбранную отправку"), this);
     h2->addWidget(btnDownloadMy);
     h2->addStretch();
     v->addLayout(h2);
@@ -79,44 +80,46 @@ StudentWindow::StudentWindow(int studentId, QWidget *parent)
     connect(tblAssignments, &QTableWidget::cellDoubleClicked, this, &StudentWindow::onAssignmentDoubleClicked);
     connect(btnDownloadMy, &QPushButton::clicked, this, &StudentWindow::onDownloadMySubmission);
 
-    // initial load
     loadAssignments();
     loadMySubmissions();
 }
 
 void StudentWindow::loadAssignments() {
     tblAssignments->setRowCount(0);
-    QSqlDatabase db = Database::instance().get();
-    QSqlQuery q(db);
 
+    QSqlQuery q(Database::instance().get());
     q.prepare("SELECT id, title, due_date FROM sp_get_assignments_for_student(?)");
     q.addBindValue(m_studentId);
+
     if (!q.exec()) {
         qWarning() << "sp_get_assignments_for_student failed:" << q.lastError().text();
-        QMessageBox::warning(this, "Ошибка", "Не удалось загрузить задания: " + q.lastError().text());
+        QMessageBox::warning(this, QStringLiteral("Ошибка"),
+                             QStringLiteral("Не удалось загрузить задания: ") + q.lastError().text());
         return;
     }
 
     int r = 0;
     while (q.next()) {
-    tblAssignments->insertRow(r);
+        const int assignmentId = q.value(0).toInt();
+        const QString title = q.value(1).toString();
+        const QVariant dueVar = q.value(2);
 
-    int id = q.value(0).toInt();
-    QString title = q.value(1).toString();
-    QVariant dueVar = q.value(2);
+        QString deadlineText;
+        if (dueVar.canConvert<QDateTime>()) {
+            deadlineText = dueVar.toDateTime().toLocalTime().toString("dd.MM.yyyy HH:mm");
+        } else {
+            deadlineText = dueVar.toString();
+        }
 
-    QString deadlineText;
-    if (dueVar.canConvert<QDateTime>()) {
-        QDateTime dt = dueVar.toDateTime().toLocalTime();
-        deadlineText = dt.toString("dd.MM.yyyy HH:mm");
-    } else {
-        deadlineText = dueVar.toString();
-    }
+        tblAssignments->insertRow(r);
 
-    tblAssignments->setItem(r, 0, new QTableWidgetItem(QString::number(id)));
-    tblAssignments->setItem(r, 1, new QTableWidgetItem(title));
-    tblAssignments->setItem(r, 2, new QTableWidgetItem(deadlineText));
-    ++r;
+        auto *titleItem = new QTableWidgetItem(title);
+        titleItem->setData(Qt::UserRole, assignmentId);
+        tblAssignments->setItem(r, 0, titleItem);
+
+        tblAssignments->setItem(r, 1, new QTableWidgetItem(deadlineText));
+
+        ++r;
     }
 
     tblAssignments->resizeColumnsToContents();
@@ -124,188 +127,237 @@ void StudentWindow::loadAssignments() {
 
 void StudentWindow::loadMySubmissions() {
     tblMySubmissions->setRowCount(0);
+
     QSqlQuery q(Database::instance().get());
-    q.prepare("SELECT id, assignment_id, original_name, uploaded_at, grade, feedback, file_path FROM sp_get_my_submissions(?)");
+    q.prepare(
+        "SELECT id, assignment_id, assignment_title, original_name, uploaded_at, grade, feedback, file_path "
+        "FROM sp_get_my_submissions(?)"
+    );
     q.addBindValue(m_studentId);
+
     if (!q.exec()) {
         qWarning() << "sp_get_my_submissions failed:" << q.lastError().text();
         return;
     }
+
     int r = 0;
     while (q.next()) {
-    tblMySubmissions->insertRow(r);
+        const int subId = q.value(0).toInt();
+        const int assignmentId = q.value(1).toInt();
+        const QString assignmentTitle = q.value(2).toString();
+        const QString origName = q.value(3).toString();
+        const QVariant uploadedVar = q.value(4);
 
-    int subId        = q.value(0).toInt();
-    int assignmentId = q.value(1).toInt();
-    QString origName = q.value(2).toString();
-    QVariant uploadedVar = q.value(3);
+        QString uploadedText;
+        if (uploadedVar.canConvert<QDateTime>()) {
+            uploadedText = uploadedVar.toDateTime().toLocalTime().toString("dd.MM.yyyy HH:mm");
+        } else {
+            uploadedText = uploadedVar.toString();
+        }
 
-    QString uploadedText;
-    if (uploadedVar.canConvert<QDateTime>()) {
-        QDateTime dt = uploadedVar.toDateTime().toLocalTime();
-        uploadedText = dt.toString("dd.MM.yyyy HH:mm");
-    } else {
-        uploadedText = uploadedVar.toString();
-    }
+        const QString grade = q.value(5).isNull() ? QString() : q.value(5).toString();
+        const QString fb = q.value(6).isNull() ? QString() : q.value(6).toString();
 
-    QString grade = q.value(4).isNull() ? QString() : q.value(4).toString();
-    QString fb    = q.value(5).isNull() ? QString() : q.value(5).toString();
-    QString gf    = grade + (fb.isEmpty() ? "" : " / " + fb);
+        QString gf = grade;
+        if (!fb.isEmpty()) {
+            if (!gf.isEmpty()) gf += " / ";
+            gf += fb;
+        }
 
-    tblMySubmissions->setItem(r, 0, new QTableWidgetItem(QString::number(subId)));
-    tblMySubmissions->setItem(r, 1, new QTableWidgetItem(QString::number(assignmentId)));
-    tblMySubmissions->setItem(r, 2, new QTableWidgetItem(origName));
-    tblMySubmissions->setItem(r, 3, new QTableWidgetItem(uploadedText));
-    tblMySubmissions->setItem(r, 4, new QTableWidgetItem(gf));
+        const QString filePath = q.value(7).toString();
 
-    tblMySubmissions->item(r, 2)->setData(Qt::UserRole, q.value(6).toString());
-    ++r;
+        tblMySubmissions->insertRow(r);
+
+        auto *asItem = new QTableWidgetItem(assignmentTitle);
+        asItem->setData(Qt::UserRole, assignmentId);
+        tblMySubmissions->setItem(r, 0, asItem);
+
+        auto *fileItem = new QTableWidgetItem(origName);
+        fileItem->setData(Qt::UserRole, subId);
+        fileItem->setData(Qt::UserRole + 1, filePath);
+        tblMySubmissions->setItem(r, 1, fileItem);
+
+        tblMySubmissions->setItem(r, 2, new QTableWidgetItem(uploadedText));
+        tblMySubmissions->setItem(r, 3, new QTableWidgetItem(gf));
+
+        ++r;
     }
 
     tblMySubmissions->resizeColumnsToContents();
 }
 
 static QString findCreateSubmissionExe() {
-    QString appDir = QCoreApplication::applicationDirPath();
-    QString exe = QDir(appDir).filePath("create_submission");
+    const QString appDir = QCoreApplication::applicationDirPath();
+
+    const QString exe = QDir(appDir).filePath("create_submission");
     if (QFileInfo(exe).exists() && QFileInfo(exe).isExecutable()) return exe;
-    QString alt = QDir(appDir).filePath("../build/create_submission");
+
+    const QString alt = QDir(appDir).filePath("../build/create_submission");
     if (QFileInfo(alt).exists() && QFileInfo(alt).isExecutable()) return alt;
-    if (QFileInfo("create_submission").exists() && QFileInfo("create_submission").isExecutable()) return QString("create_submission");
+
+    if (QFileInfo("create_submission").exists() && QFileInfo("create_submission").isExecutable()) {
+        return QStringLiteral("create_submission");
+    }
+
     return QString();
 }
 
 void StudentWindow::onUpload() {
-    auto sel = tblAssignments->selectedItems();
-    if (sel.isEmpty()) {
-        QMessageBox::warning(this, "Ошибка", "Выберите задание");
+    const int row = tblAssignments->currentRow();
+    if (row < 0) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Выберите задание"));
         return;
     }
-    int row = tblAssignments->currentRow();
-    if (row < 0) { QMessageBox::warning(this, "Ошибка", "Выберите задание"); return; }
-    int assignmentId = tblAssignments->item(row,0)->text().toInt();
 
-    QString file = QFileDialog::getOpenFileName(this, "Выберите файл для загрузки");
+    auto *titleItem = tblAssignments->item(row, 0);
+    if (!titleItem) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Выберите задание"));
+        return;
+    }
+
+    const int assignmentId = titleItem->data(Qt::UserRole).toInt();
+    if (assignmentId <= 0) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Некорректное задание"));
+        return;
+    }
+
+    const QString file = QFileDialog::getOpenFileName(this, QStringLiteral("Выберите файл для загрузки"));
     if (file.isEmpty()) return;
 
-    QString exe = findCreateSubmissionExe();
+    const QString exe = findCreateSubmissionExe();
     if (exe.isEmpty()) {
-        QMessageBox::critical(this, "Ошибка", "Не найден исполняемый файл create_submission рядом с приложением.");
+        QMessageBox::critical(this, QStringLiteral("Ошибка"),
+                              QStringLiteral("Не найден исполняемый файл create_submission рядом с приложением."));
         return;
     }
 
     QStringList args;
-    args << file << QString::number(m_studentId) << QString::number(assignmentId) << QFileInfo(file).fileName();
+    args << file
+         << QString::number(m_studentId)
+         << QString::number(assignmentId)
+         << QFileInfo(file).fileName();
 
-    int rc = QProcess::execute(exe, args);
+    const int rc = QProcess::execute(exe, args);
     if (rc != 0) {
-        QMessageBox::critical(this, "Ошибка", "Не удалось загрузить файл (create_submission вернул ошибку)");
+        QMessageBox::critical(this, QStringLiteral("Ошибка"),
+                              QStringLiteral("Не удалось загрузить файл (create_submission вернул ошибку)"));
         qWarning() << "create_submission failed, rc=" << rc << "exe=" << exe << "args=" << args;
         return;
     }
 
-    QMessageBox::information(this, "OK", "Файл успешно отправлен");
-    Logger::log(m_studentId, "upload_submission", QString("assignment=%1 file=%2").arg(assignmentId).arg(QFileInfo(file).fileName()));
+    QMessageBox::information(this, QStringLiteral("OK"), QStringLiteral("Файл успешно отправлен"));
+    Logger::log(m_studentId, "upload_submission",
+                QString("assignment=%1 file=%2").arg(assignmentId).arg(QFileInfo(file).fileName()));
     loadMySubmissions();
 }
 
 void StudentWindow::onAssignmentDoubleClicked(int row, int) {
     if (row < 0) return;
-    int assignmentId = tblAssignments->item(row,0)->text().toInt();
+
+    auto *titleItem = tblAssignments->item(row, 0);
+    if (!titleItem) return;
+
+    const int assignmentId = titleItem->data(Qt::UserRole).toInt();
+    if (assignmentId <= 0) return;
+
     AssignmentDetailDialog dlg(assignmentId, this);
     dlg.exec();
 }
 
 void StudentWindow::onDownloadMySubmission() {
-    auto sel = tblMySubmissions->selectedItems();
-    if (sel.isEmpty()) { QMessageBox::warning(this, "Ошибка", "Выберите отправление"); return; }
-    int row = tblMySubmissions->currentRow();
+    const int row = tblMySubmissions->currentRow();
+    if (row < 0) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Выберите отправление"));
+        return;
+    }
 
-    QString filePath = tblMySubmissions->item(row,2)->data(Qt::UserRole).toString();
-    QString originalName = tblMySubmissions->item(row,2)->text();
-    if (filePath.isEmpty()) { QMessageBox::warning(this,"Ошибка","Путь к файлу отсутствует"); return; }
+    auto *fileItem = tblMySubmissions->item(row, 1);
+    if (!fileItem) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Выберите отправление"));
+        return;
+    }
 
-    QString encFilePath = QString("storage/files/%1").arg(filePath);
-    if (!QFileInfo::exists(encFilePath)) { QMessageBox::warning(this,"Ошибка","Файл не найден: " + encFilePath); return; }
+    const QString filePath = fileItem->data(Qt::UserRole + 1).toString();
+    const QString originalName = fileItem->text();
+    if (filePath.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Путь к файлу отсутствует"));
+        return;
+    }
 
-    QString uuid = QFileInfo(filePath).baseName();
-    QString metaPath = QString("storage/metadata/%1.json").arg(uuid);
-    QString tmpPath = QDir::temp().filePath(QString("%1_%2").arg(uuid).arg(originalName));
-    tmpPath = tmpPath.replace("/", "_");
+    const QString encFilePath = QStringLiteral("storage/files/%1").arg(filePath);
+    if (!QFileInfo::exists(encFilePath)) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Файл не найден: ") + encFilePath);
+        return;
+    }
+
+    const QString uuid = QFileInfo(filePath).baseName();
+    const QString metaPath = QStringLiteral("storage/metadata/%1.json").arg(uuid);
+
+    QString tmpPath = QDir::temp().filePath(QStringLiteral("%1_%2").arg(uuid, originalName));
+    tmpPath.replace("/", "_");
 
     if (QFileInfo(metaPath).exists()) {
         QFile mf(metaPath);
-        if (!mf.open(QIODevice::ReadOnly)) { QMessageBox::warning(this,"Ошибка","Не удалось открыть metadata"); return; }
-        auto metaRaw = mf.readAll();
+        if (!mf.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Не удалось открыть metadata"));
+            return;
+        }
+        const QByteArray metaRaw = mf.readAll();
         mf.close();
-        QJsonDocument jd = QJsonDocument::fromJson(metaRaw);
-        if (!jd.isObject()) { QMessageBox::warning(this,"Ошибка","Неверный metadata"); return; }
-        QJsonObject mo = jd.object();
 
-        QByteArray encKeyB64 = QByteArray::fromBase64(mo.value("key_encrypted").toString().toUtf8());
-        QByteArray keyIvB64  = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
-        QByteArray keyTagB64 = QByteArray::fromBase64(mo.value("key_tag").toString().toUtf8());
-        QByteArray fileIvB64 = QByteArray::fromBase64(mo.value("iv").toString().toUtf8());
+        const QJsonDocument jd = QJsonDocument::fromJson(metaRaw);
+        if (!jd.isObject()) {
+            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Неверный metadata"));
+            return;
+        }
+        const QJsonObject mo = jd.object();
+
+        const QByteArray encKeyB64 = QByteArray::fromBase64(mo.value("key_encrypted").toString().toUtf8());
+        const QByteArray keyIvB64  = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
+        const QByteArray keyTagB64 = QByteArray::fromBase64(mo.value("key_tag").toString().toUtf8());
+        const QByteArray fileIvB64 = QByteArray::fromBase64(mo.value("iv").toString().toUtf8());
 
         std::vector<unsigned char> encKey((unsigned char*)encKeyB64.data(), (unsigned char*)encKeyB64.data() + encKeyB64.size());
         std::vector<unsigned char> keyIv((unsigned char*)keyIvB64.data(), (unsigned char*)keyIvB64.data() + keyIvB64.size());
         std::vector<unsigned char> keyTag((unsigned char*)keyTagB64.data(), (unsigned char*)keyTagB64.data() + keyTagB64.size());
         std::vector<unsigned char> fileIv((unsigned char*)fileIvB64.data(), (unsigned char*)fileIvB64.data() + fileIvB64.size());
 
-        auto master = ConfigManager::instance().masterKey();
-        if (master.empty()) { QMessageBox::warning(this,"Ошибка","Мастер-ключ не загружен"); return; }
+        const auto master = ConfigManager::instance().masterKey();
+        if (master.empty()) {
+            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Мастер-ключ не загружен"));
+            return;
+        }
 
         std::string err;
         std::vector<unsigned char> fileKey;
         if (!keyprotect::decryptWithAesGcm(master, encKey, keyIv, keyTag, fileKey, err)) {
-            QMessageBox::critical(this, "Ошибка дешифрования ключа", QString::fromStdString(err));
+            QMessageBox::critical(this, QStringLiteral("Ошибка дешифрования ключа"), QString::fromStdString(err));
             return;
         }
 
         std::string serr;
         if (!crypto::aes256_cbc_decrypt(fileKey, fileIv, encFilePath.toStdString(), tmpPath.toStdString(), serr)) {
-            QMessageBox::critical(this, "Ошибка расшифровки файла", QString::fromStdString(serr));
+            QMessageBox::critical(this, QStringLiteral("Ошибка расшифровки файла"), QString::fromStdString(serr));
             return;
         }
     } else {
         QFile::remove(tmpPath);
         if (!QFile::copy(encFilePath, tmpPath)) {
-            QMessageBox::warning(this,"Ошибка","Не удалось подготовить файл для открытия");
+            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Не удалось подготовить файл для открытия"));
             return;
         }
     }
 
-    // гарантируем абсолютный путь к расшифрованному файлу
-    QFileInfo tf(tmpPath);
-    QString absTmp = tf.absoluteFilePath();
-    if (absTmp.isEmpty()) absTmp = tmpPath;
-
-    // права на чтение
-    QFile::Permissions perms = QFile::permissions(absTmp);
+    QFile::Permissions perms = QFile::permissions(tmpPath);
     perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner
           | QFileDevice::ReadGroup | QFileDevice::ReadOther;
-    QFile::setPermissions(absTmp, perms);
+    QFile::setPermissions(tmpPath, perms);
 
-    // 1) пробуем xdg-open
-    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) {
-        return;
-    }
+    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << tmpPath)) return;
+    if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << tmpPath)) return;
+    if (QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath))) return;
 
-    // 2) если xdg-open не сработал, пытаемся открыть через gedit
-    if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << absTmp)) {
-        return;
-    }
-
-    // 3) последний вариант — QDesktopServices (на всякий случай)
-    if (QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp))) {
-        return;
-    }
-
-    // 4) ничего не сработало — говорим путь пользователю
-    QMessageBox::warning(this,
-                         "Ошибка",
-                         "Не удалось автоматически открыть файл. Откройте вручную: " + absTmp);
-    qWarning() << "Failed to open decrypted file:" << absTmp;
-
-
+    QMessageBox::warning(this, QStringLiteral("Ошибка"),
+                         QStringLiteral("Не удалось автоматически открыть файл. Откройте вручную: ") + tmpPath);
+    qWarning() << "Failed to open decrypted file:" << tmpPath;
 }

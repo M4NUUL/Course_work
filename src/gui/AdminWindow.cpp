@@ -24,9 +24,10 @@ AdminWindow::AdminWindow(int adminId, QWidget *parent)
 
     // Таблица пользователей: ID, Login, Full name, Role
     tblUsers = new QTableWidget(this);
-    tblUsers->setColumnCount(4);
-    tblUsers->setHorizontalHeaderLabels({"ID", "Login", "Full name", "Role"});
+    tblUsers->setColumnCount(3);
+    tblUsers->setHorizontalHeaderLabels({"Login", "Full name", "Role"});
     tblUsers->setSelectionBehavior(QAbstractItemView::SelectRows);
+    tblUsers->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblUsers->horizontalHeader()->setStretchLastSection(true);
     v->addWidget(new QLabel("Пользователи:"));
     v->addWidget(tblUsers, 1);
@@ -76,15 +77,24 @@ void AdminWindow::loadUsers() {
     }
 
     int r = 0;
-    while (q.next()) {
-        tblUsers->insertRow(r);
-        tblUsers->setItem(r, 0, new QTableWidgetItem(QString::number(q.value(0).toInt())));
-        tblUsers->setItem(r, 1, new QTableWidgetItem(q.value(1).toString()));
-        tblUsers->setItem(r, 2, new QTableWidgetItem(q.value(2).toString()));
-        tblUsers->setItem(r, 3, new QTableWidgetItem(q.value(3).toString()));
-        ++r;
-    }
-    tblUsers->resizeColumnsToContents();
+while (q.next()) {
+    const int uid = q.value(0).toInt();
+    const QString login = q.value(1).toString();
+    const QString full  = q.value(2).toString();
+    const QString role  = q.value(3).toString();
+
+    tblUsers->insertRow(r);
+
+    auto *loginItem = new QTableWidgetItem(login);
+    loginItem->setData(Qt::UserRole, uid);   // id НЕ отображаем, храним как metadata
+    tblUsers->setItem(r, 0, loginItem);
+
+    tblUsers->setItem(r, 1, new QTableWidgetItem(full));
+    tblUsers->setItem(r, 2, new QTableWidgetItem(role));
+
+    ++r;
+}
+tblUsers->resizeColumnsToContents();
 }
 
 void AdminWindow::onCreateUser() {
@@ -150,8 +160,9 @@ void AdminWindow::onToggleActive() {
         showError("Выберите пользователя");
         return;
     }
-    int row = tblUsers->currentRow();
-    int uid = tblUsers->item(row, 0)->text().toInt();
+    int uid = selectedUserId();
+    if (uid < 0) { showError("Выберите пользователя"); return; }
+
 
     QSqlQuery q(Database::instance().get());
     q.prepare("UPDATE users SET active = NOT active WHERE id = ?");
@@ -170,9 +181,8 @@ void AdminWindow::onEditUser() {
         showError("Выберите пользователя");
         return;
     }
-    int row = tblUsers->currentRow();
-    int uid = tblUsers->item(row, 0)->text().toInt();
-
+    int uid = selectedUserId();
+    if (uid < 0) { showError("Выберите пользователя"); return; }
     QSqlQuery q(Database::instance().get());
     q.prepare("SELECT login, full_name, role FROM users WHERE id = ?");
     q.addBindValue(uid);
@@ -219,8 +229,13 @@ void AdminWindow::onDeleteUser() {
         return;
     }
     int row = tblUsers->currentRow();
-    int userId = tblUsers->item(row, 0)->text().toInt();
-    QString login = tblUsers->item(row, 1)->text();
+    if (row < 0) { showError("Выберите пользователя"); return; }
+
+    int userId = selectedUserId();
+    if (userId < 0) { showError("Выберите пользователя"); return; }
+
+    QString login = tblUsers->item(row, 0)->text(); // login в 0-й колонке
+
 
     if (QMessageBox::question(this, "Удалить пользователя",
                               QString("Удалить пользователя %1 ?").arg(login),
@@ -239,4 +254,12 @@ void AdminWindow::onDeleteUser() {
     Logger::log(m_adminId, "delete_user", QString("user_id=%1").arg(userId));
     loadUsers();
     QMessageBox::information(this, "OK", "Пользователь удалён");
+}
+
+int AdminWindow::selectedUserId() const {
+    int row = tblUsers->currentRow();
+    if (row < 0) return -1;
+    auto *item = tblUsers->item(row, 0); // login
+    if (!item) return -1;
+    return item->data(Qt::UserRole).toInt();
 }

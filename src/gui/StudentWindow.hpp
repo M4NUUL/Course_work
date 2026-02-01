@@ -7,8 +7,9 @@ class QPushButton;
 
 class StudentWindow : public QWidget {
     Q_OBJECT
+
 public:
-    explicit StudentWindow(int studentId, QWidget *parent=nullptr);
+    explicit StudentWindow(int studentId, QWidget *parent = nullptr);
 
 private slots:
     void loadAssignments();
@@ -19,7 +20,8 @@ private slots:
 
 private:
     int m_studentId;
-    QTableWidget *tblAssignments;
-    QTableWidget *tblMySubmissions;
-    QPushButton *btnUpload;
+
+    QTableWidget *tblAssignments = nullptr;
+    QTableWidget *tblMySubmissions = nullptr;
+    QPushButton *btnUpload = nullptr;
 };

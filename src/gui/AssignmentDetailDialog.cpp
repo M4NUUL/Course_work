@@ -21,6 +21,7 @@
 #include <QMessageBox>
 #include <QDateTime>
 #include <QFileDevice>
+#include <QDebug>
 
 AssignmentDetailDialog::AssignmentDetailDialog(int assignmentId, QWidget *parent)
     : QDialog(parent), m_assignmentId(assignmentId)
@@ -152,9 +153,15 @@ void AssignmentDetailDialog::onFileDoubleClicked(int row, int /*column*/) {
         return;
     }
 
-    QString tmpPath = QDir::temp().filePath(originalName);
-    tmpPath.replace("/", "_");
+    QString safeName = QFileInfo(originalName).fileName();
+    safeName.replace("/", "_");
+    safeName.replace("\\", "_");
+
+    const QString stamp = QDateTime::currentDateTimeUtc().toString("yyyyMMddHHmmsszzz");
+    QString tmpPath = QDir::temp().filePath(QStringLiteral("edudesk_assignment_%1_%2").arg(stamp, safeName));
     QFile::remove(tmpPath);
+
+    const QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
 
     if (!QFile::copy(fullPath, tmpPath)) {
         QMessageBox::warning(
@@ -165,18 +172,18 @@ void AssignmentDetailDialog::onFileDoubleClicked(int row, int /*column*/) {
         return;
     }
 
-    // Явно выставляем права, т.к. некоторые окружения игнорируют права временных файлов
     QFile::Permissions perms = QFile::permissions(tmpPath);
     perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner
           | QFileDevice::ReadGroup | QFileDevice::ReadOther;
     QFile::setPermissions(tmpPath, perms);
 
-    if (QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath))) return;
-    if (QProcess::startDetached(QStringLiteral("xdg-open"), {tmpPath})) return;
+    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) return;
+    if (QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp))) return;
 
     QMessageBox::warning(
         this,
         QStringLiteral("Ошибка"),
-        QStringLiteral("Не удалось открыть файл: ") + tmpPath
+        QStringLiteral("Не удалось открыть файл: ") + absTmp
     );
+    qWarning() << "Failed to open file:" << absTmp;
 }

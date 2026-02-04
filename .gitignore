@@ -34,3 +34,4 @@ go.work.sum
 # Un usefull folder/folder that will be created
 build/
 logs/
+storage/

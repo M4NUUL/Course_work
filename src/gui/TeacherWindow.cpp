@@ -40,7 +40,6 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
     auto v = new QVBoxLayout(this);
     auto htop = new QHBoxLayout();
 
-    // Assignments table (без ID)
     tblAssignments = new QTableWidget();
     tblAssignments->setColumnCount(1);
     tblAssignments->setHorizontalHeaderLabels({"Задание"});
@@ -49,7 +48,6 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
     tblAssignments->horizontalHeader()->setStretchLastSection(true);
     connect(tblAssignments, &QTableWidget::cellClicked, this, &TeacherWindow::onAssignmentSelected);
 
-    // Submissions table (без ID)
     tblSubmissions = new QTableWidget();
     tblSubmissions->setColumnCount(4);
     tblSubmissions->setHorizontalHeaderLabels({"Студент", "Файл", "Загружено", "Оценка / Комментарий"});
@@ -60,7 +58,6 @@ TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
     htop->addWidget(tblAssignments, 1);
     htop->addWidget(tblSubmissions, 2);
 
-    // Buttons
     btnRefresh = new QPushButton("Обновить");
     btnDownload = new QPushButton("Скачать/Открыть");
     btnGrade = new QPushButton("Оценить / Комментарий");
@@ -178,12 +175,11 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
             gf += feedback;
         }
 
-        // Колонки: 0=Студент, 1=Файл, 2=Загружено, 3=Оценка/Комментарий
         tblSubmissions->setItem(row, 0, new QTableWidgetItem(login));
 
         auto *fileItem = new QTableWidgetItem(orig);
-        fileItem->setData(Qt::UserRole, subId);                      // скрытый submission id
-        fileItem->setData(Qt::UserRole + 1, q.value(6).toString());  // file_path (опционально)
+        fileItem->setData(Qt::UserRole, subId);
+        fileItem->setData(Qt::UserRole + 1, q.value(6).toString());
         tblSubmissions->setItem(row, 1, fileItem);
 
         tblSubmissions->setItem(row, 2, new QTableWidgetItem(uploadedText));
@@ -208,7 +204,7 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    auto *fileItem = tblSubmissions->item(row, 1); // колонка "Файл"
+    auto *fileItem = tblSubmissions->item(row, 1);
     if (!fileItem) {
         QMessageBox::warning(this, "Ошибка", "Выберите отправление");
         return;
@@ -232,7 +228,6 @@ void TeacherWindow::onDownloadSubmission() {
     QString filePath = q.value(0).toString();
     QString originalName = q.value(1).toString();
 
-    // Read metadata and decrypt key
     QString uuid = QFileInfo(filePath).baseName();
     QString metaPath = QString("storage/metadata/%1.json").arg(uuid);
     QFile mf(metaPath);
@@ -284,8 +279,11 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    QString tmpPath = QDir::temp().filePath(QString("jumandgi_sub_%1_%2").arg(subId).arg(originalName));
-    tmpPath = tmpPath.replace("/", "_");
+    QString safeName = QFileInfo(originalName).fileName();
+    safeName.replace("/", "_");
+    safeName.replace("\\", "_");
+
+    QString tmpPath = QDir::temp().filePath(QString("edudesk_sub_%1_%2").arg(subId).arg(safeName));
     QFile::remove(tmpPath);
 
     std::string serr;
@@ -294,9 +292,7 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    QFileInfo tf(tmpPath);
-    QString absTmp = tf.absoluteFilePath();
-    if (absTmp.isEmpty()) absTmp = tmpPath;
+    QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
 
     QFile::Permissions perms = QFile::permissions(absTmp);
     perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -342,7 +338,7 @@ void TeacherWindow::onGradeSubmission() {
         return;
     }
 
-    auto *fileItem = tblSubmissions->item(row, 1); // колонка "Файл"
+    auto *fileItem = tblSubmissions->item(row, 1);
     if (!fileItem) {
         QMessageBox::warning(this, "Ошибка", "Выберите отправление");
         return;
@@ -391,7 +387,6 @@ void TeacherWindow::onCreateAssignment() {
 
     QDateTime due = QDateTime::currentDateTime().addDays(days);
 
-    // choose group (optional)
     int chosenGroupId = -1;
     QSqlQuery gq(Database::instance().get());
     if (gq.exec("SELECT id, name FROM groups ORDER BY name")) {
@@ -437,7 +432,6 @@ void TeacherWindow::onCreateAssignment() {
         agq.exec();
     }
 
-    // choose specific students (optional)
     QSqlQuery sq(db);
     sq.prepare("SELECT id, login, full_name FROM users WHERE role = 'student' ORDER BY id");
     if (!sq.exec()) {
@@ -493,24 +487,31 @@ void TeacherWindow::onCreateAssignment() {
         }
     }
 
-    // attach file
     QString attached = QFileDialog::getOpenFileName(this, "Прикрепить файл к заданию (необязательно)");
     if (!attached.isEmpty()) {
         QDir().mkpath("storage/assignments");
-        QString uidSrc = title + QDateTime::currentDateTime().toString() + QString::number(assignmentId);
+
+        QString uidSrc = title + QDateTime::currentDateTime().toString(Qt::ISODate) + QString::number(assignmentId);
         QString uuid = QString::fromUtf8(QCryptographicHash::hash(uidSrc.toUtf8(), QCryptographicHash::Md5).toHex());
-        QString target = QString("storage/assignments/%1_%2").arg(uuid).arg(QFileInfo(attached).fileName());
-        if (QFile::copy(attached, target)) {
-            QSqlQuery fq(db);
-            fq.prepare("INSERT INTO assignment_files (assignment_id, file_path, original_name, uploaded_by, uploaded_at) "
-                       "VALUES (?, ?, ?, ?, NOW())");
-            fq.addBindValue(assignmentId);
-            fq.addBindValue(QFileInfo(target).fileName());
-            fq.addBindValue(QFileInfo(attached).fileName());
-            fq.addBindValue(m_teacherId);
-            fq.exec();
-        } else {
+
+        QString storedName = QString("%1_%2").arg(uuid, QFileInfo(attached).fileName());
+        QString targetAbs = QDir("storage/assignments").filePath(storedName);
+
+        QFile::remove(targetAbs);
+        if (!QFile::copy(attached, targetAbs)) {
             QMessageBox::warning(this, "Ошибка", "Не удалось сохранить прикреплённый файл");
+        } else {
+            QSqlQuery fq(db);
+            fq.prepare("INSERT INTO assignment_files (assignment_id, file_path, original_name, uploaded_at) "
+                       "VALUES (?, ?, ?, NOW())");
+            fq.addBindValue(assignmentId);
+            fq.addBindValue(storedName);
+            fq.addBindValue(QFileInfo(attached).fileName());
+
+            if (!fq.exec()) {
+                QFile::remove(targetAbs);
+                QMessageBox::warning(this, "Ошибка", "Не удалось записать файл в БД: " + fq.lastError().text());
+            }
         }
     }
 

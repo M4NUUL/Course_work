@@ -293,8 +293,14 @@ void StudentWindow::onDownloadMySubmission() {
     const QString uuid = QFileInfo(filePath).baseName();
     const QString metaPath = QStringLiteral("storage/metadata/%1.json").arg(uuid);
 
-    QString tmpPath = QDir::temp().filePath(QStringLiteral("%1_%2").arg(uuid, originalName));
-    tmpPath.replace("/", "_");
+    QString safeName = QFileInfo(originalName).fileName();
+    safeName.replace("/", "_");
+    safeName.replace("\\", "_");
+
+    QString tmpPath = QDir::temp().filePath(QStringLiteral("%1_%2").arg(uuid, safeName));
+    QFile::remove(tmpPath);
+
+    const QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
 
     if (QFileInfo(metaPath).exists()) {
         QFile mf(metaPath);
@@ -341,7 +347,6 @@ void StudentWindow::onDownloadMySubmission() {
             return;
         }
     } else {
-        QFile::remove(tmpPath);
         if (!QFile::copy(encFilePath, tmpPath)) {
             QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Не удалось подготовить файл для открытия"));
             return;
@@ -353,11 +358,11 @@ void StudentWindow::onDownloadMySubmission() {
           | QFileDevice::ReadGroup | QFileDevice::ReadOther;
     QFile::setPermissions(tmpPath, perms);
 
-    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << tmpPath)) return;
-    if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << tmpPath)) return;
-    if (QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath))) return;
+    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) return;
+    if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << absTmp)) return;
+    if (QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp))) return;
 
     QMessageBox::warning(this, QStringLiteral("Ошибка"),
-                         QStringLiteral("Не удалось автоматически открыть файл. Откройте вручную: ") + tmpPath);
-    qWarning() << "Failed to open decrypted file:" << tmpPath;
+                         QStringLiteral("Не удалось автоматически открыть файл. Откройте вручную: ") + absTmp);
+    qWarning() << "Failed to open decrypted file:" << absTmp;
 }

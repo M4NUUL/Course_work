@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: edudesk-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: edudesk
+      POSTGRES_USER: edudesk
+      POSTGRES_PASSWORD: edudesk_pass
+
+    ports:
+      - "15432:5432"
+
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./sql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./sql/002_sp.sql:/docker-entrypoint-initdb.d/002_sp.sql:ro
+      - ./sql/003_fix_sp.sql:/docker-entrypoint-initdb.d/003_fix_sp.sql:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edudesk -d edudesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db_data:

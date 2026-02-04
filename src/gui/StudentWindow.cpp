@@ -28,10 +28,14 @@
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QDir>
-#include <QDebug>
 #include <QDateTime>
 #include <QFile>
 #include <QFileDevice>
+#include <QDebug>
+
+static QString storageAbs(const QString &rel) {
+    return QString::fromStdString(ConfigManager::instance().storagePath(rel.toStdString()));
+}
 
 StudentWindow::StudentWindow(int studentId, QWidget *parent)
     : QWidget(parent), m_studentId(studentId)
@@ -284,14 +288,19 @@ void StudentWindow::onDownloadMySubmission() {
         return;
     }
 
-    const QString encFilePath = QStringLiteral("storage/files/%1").arg(filePath);
+    const QString encFilePath = storageAbs(QStringLiteral("files/%1").arg(filePath));
     if (!QFileInfo::exists(encFilePath)) {
         QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Файл не найден: ") + encFilePath);
         return;
     }
 
     const QString uuid = QFileInfo(filePath).baseName();
-    const QString metaPath = QStringLiteral("storage/metadata/%1.json").arg(uuid);
+    const QString metaPath = storageAbs(QStringLiteral("metadata/%1.json").arg(uuid));
+
+    if (!QFileInfo::exists(metaPath)) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Metadata не найден"));
+        return;
+    }
 
     QString safeName = QFileInfo(originalName).fileName();
     safeName.replace("/", "_");
@@ -300,63 +309,56 @@ void StudentWindow::onDownloadMySubmission() {
     QString tmpPath = QDir::temp().filePath(QStringLiteral("%1_%2").arg(uuid, safeName));
     QFile::remove(tmpPath);
 
-    const QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
+    QFile mf(metaPath);
+    if (!mf.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Не удалось открыть metadata"));
+        return;
+    }
+    const QByteArray metaRaw = mf.readAll();
+    mf.close();
 
-    if (QFileInfo(metaPath).exists()) {
-        QFile mf(metaPath);
-        if (!mf.open(QIODevice::ReadOnly)) {
-            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Не удалось открыть metadata"));
-            return;
-        }
-        const QByteArray metaRaw = mf.readAll();
-        mf.close();
+    const QJsonDocument jd = QJsonDocument::fromJson(metaRaw);
+    if (!jd.isObject()) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Неверный metadata"));
+        return;
+    }
+    const QJsonObject mo = jd.object();
 
-        const QJsonDocument jd = QJsonDocument::fromJson(metaRaw);
-        if (!jd.isObject()) {
-            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Неверный metadata"));
-            return;
-        }
-        const QJsonObject mo = jd.object();
+    const QByteArray encKeyB64 = QByteArray::fromBase64(mo.value("key_encrypted").toString().toUtf8());
+    const QByteArray keyIvB64  = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
+    const QByteArray keyTagB64 = QByteArray::fromBase64(mo.value("key_tag").toString().toUtf8());
+    const QByteArray fileIvB64 = QByteArray::fromBase64(mo.value("iv").toString().toUtf8());
 
-        const QByteArray encKeyB64 = QByteArray::fromBase64(mo.value("key_encrypted").toString().toUtf8());
-        const QByteArray keyIvB64  = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
-        const QByteArray keyTagB64 = QByteArray::fromBase64(mo.value("key_tag").toString().toUtf8());
-        const QByteArray fileIvB64 = QByteArray::fromBase64(mo.value("iv").toString().toUtf8());
+    std::vector<unsigned char> encKey((unsigned char*)encKeyB64.data(), (unsigned char*)encKeyB64.data() + encKeyB64.size());
+    std::vector<unsigned char> keyIv((unsigned char*)keyIvB64.data(), (unsigned char*)keyIvB64.data() + keyIvB64.size());
+    std::vector<unsigned char> keyTag((unsigned char*)keyTagB64.data(), (unsigned char*)keyTagB64.data() + keyTagB64.size());
+    std::vector<unsigned char> fileIv((unsigned char*)fileIvB64.data(), (unsigned char*)fileIvB64.data() + fileIvB64.size());
 
-        std::vector<unsigned char> encKey((unsigned char*)encKeyB64.data(), (unsigned char*)encKeyB64.data() + encKeyB64.size());
-        std::vector<unsigned char> keyIv((unsigned char*)keyIvB64.data(), (unsigned char*)keyIvB64.data() + keyIvB64.size());
-        std::vector<unsigned char> keyTag((unsigned char*)keyTagB64.data(), (unsigned char*)keyTagB64.data() + keyTagB64.size());
-        std::vector<unsigned char> fileIv((unsigned char*)fileIvB64.data(), (unsigned char*)fileIvB64.data() + fileIvB64.size());
+    const auto master = ConfigManager::instance().masterKey();
+    if (master.empty()) {
+        QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Мастер-ключ не загружен"));
+        return;
+    }
 
-        const auto master = ConfigManager::instance().masterKey();
-        if (master.empty()) {
-            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Мастер-ключ не загружен"));
-            return;
-        }
+    std::string err;
+    std::vector<unsigned char> fileKey;
+    if (!keyprotect::decryptWithAesGcm(master, encKey, keyIv, keyTag, fileKey, err)) {
+        QMessageBox::critical(this, QStringLiteral("Ошибка дешифрования ключа"), QString::fromStdString(err));
+        return;
+    }
 
-        std::string err;
-        std::vector<unsigned char> fileKey;
-        if (!keyprotect::decryptWithAesGcm(master, encKey, keyIv, keyTag, fileKey, err)) {
-            QMessageBox::critical(this, QStringLiteral("Ошибка дешифрования ключа"), QString::fromStdString(err));
-            return;
-        }
-
-        std::string serr;
-        if (!crypto::aes256_cbc_decrypt(fileKey, fileIv, encFilePath.toStdString(), tmpPath.toStdString(), serr)) {
-            QMessageBox::critical(this, QStringLiteral("Ошибка расшифровки файла"), QString::fromStdString(serr));
-            return;
-        }
-    } else {
-        if (!QFile::copy(encFilePath, tmpPath)) {
-            QMessageBox::warning(this, QStringLiteral("Ошибка"), QStringLiteral("Не удалось подготовить файл для открытия"));
-            return;
-        }
+    std::string serr;
+    if (!crypto::aes256_cbc_decrypt(fileKey, fileIv, encFilePath.toStdString(), tmpPath.toStdString(), serr)) {
+        QMessageBox::critical(this, QStringLiteral("Ошибка расшифровки файла"), QString::fromStdString(serr));
+        return;
     }
 
     QFile::Permissions perms = QFile::permissions(tmpPath);
     perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner
           | QFileDevice::ReadGroup | QFileDevice::ReadOther;
     QFile::setPermissions(tmpPath, perms);
+
+    const QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
 
     if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) return;
     if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << absTmp)) return;

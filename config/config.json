@@ -1,5 +1,8 @@
 {
   "master_key_hex": "2542c14f6f79eaa2f72a49e0e455ab2d088885563838bfa4479b8a407bd8800c",
+  "storage": {
+    "root": "~/.local/share/edudesk"
+  },
   "db": {
     "host": "127.0.0.1",
     "port": 15432,

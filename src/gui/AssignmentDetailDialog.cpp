@@ -1,6 +1,7 @@
 #include "AssignmentDetailDialog.hpp"
 
 #include "../db/Database.hpp"
+#include "../config/ConfigManager.hpp"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -22,6 +23,10 @@
 #include <QDateTime>
 #include <QFileDevice>
 #include <QDebug>
+
+static QString storageAbs(const QString &rel) {
+    return QString::fromStdString(ConfigManager::instance().storagePath(rel.toStdString()));
+}
 
 AssignmentDetailDialog::AssignmentDetailDialog(int assignmentId, QWidget *parent)
     : QDialog(parent), m_assignmentId(assignmentId)
@@ -105,7 +110,8 @@ void AssignmentDetailDialog::loadFiles() {
     q.prepare(
         "SELECT id, original_name, file_path "
         "FROM assignment_files "
-        "WHERE assignment_id = ?"
+        "WHERE assignment_id = ? "
+        "ORDER BY uploaded_at DESC, id DESC"
     );
     q.addBindValue(m_assignmentId);
 
@@ -133,7 +139,7 @@ void AssignmentDetailDialog::loadFiles() {
     tblFiles->resizeColumnsToContents();
 }
 
-void AssignmentDetailDialog::onFileDoubleClicked(int row, int /*column*/) {
+void AssignmentDetailDialog::onFileDoubleClicked(int row, int) {
     if (row < 0) return;
 
     auto *item = tblFiles->item(row, 0);
@@ -143,7 +149,7 @@ void AssignmentDetailDialog::onFileDoubleClicked(int row, int /*column*/) {
     const QString originalName = item->text();
     if (filePath.isEmpty()) return;
 
-    const QString fullPath = QStringLiteral("storage/assignments/%1").arg(filePath);
+    const QString fullPath = storageAbs(QStringLiteral("assignments/%1").arg(filePath));
     if (!QFileInfo::exists(fullPath)) {
         QMessageBox::warning(
             this,
@@ -157,11 +163,8 @@ void AssignmentDetailDialog::onFileDoubleClicked(int row, int /*column*/) {
     safeName.replace("/", "_");
     safeName.replace("\\", "_");
 
-    const QString stamp = QDateTime::currentDateTimeUtc().toString("yyyyMMddHHmmsszzz");
-    QString tmpPath = QDir::temp().filePath(QStringLiteral("edudesk_assignment_%1_%2").arg(stamp, safeName));
+    QString tmpPath = QDir::temp().filePath(QStringLiteral("edudesk_asg_%1_%2").arg(m_assignmentId).arg(safeName));
     QFile::remove(tmpPath);
-
-    const QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
 
     if (!QFile::copy(fullPath, tmpPath)) {
         QMessageBox::warning(
@@ -177,13 +180,12 @@ void AssignmentDetailDialog::onFileDoubleClicked(int row, int /*column*/) {
           | QFileDevice::ReadGroup | QFileDevice::ReadOther;
     QFile::setPermissions(tmpPath, perms);
 
-    if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) return;
-    if (QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp))) return;
+    if (QDesktopServices::openUrl(QUrl::fromLocalFile(tmpPath))) return;
+    if (QProcess::startDetached(QStringLiteral("xdg-open"), {tmpPath})) return;
 
     QMessageBox::warning(
         this,
         QStringLiteral("Ошибка"),
-        QStringLiteral("Не удалось открыть файл: ") + absTmp
+        QStringLiteral("Не удалось открыть файл: ") + tmpPath
     );
-    qWarning() << "Failed to open file:" << absTmp;
 }

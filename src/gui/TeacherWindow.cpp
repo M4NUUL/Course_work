@@ -32,6 +32,10 @@
 #include <QLineEdit>
 #include <QFileDevice>
 
+static QString storageAbs(const QString &rel) {
+    return QString::fromStdString(ConfigManager::instance().storagePath(rel.toStdString()));
+}
+
 TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
     : QWidget(parent), m_teacherId(teacherId) {
     setWindowTitle("EduDesk — Интерфейс преподавателя");
@@ -229,7 +233,8 @@ void TeacherWindow::onDownloadSubmission() {
     QString originalName = q.value(1).toString();
 
     QString uuid = QFileInfo(filePath).baseName();
-    QString metaPath = QString("storage/metadata/%1.json").arg(uuid);
+    const QString metaPath = storageAbs(QString("metadata/%1.json").arg(uuid));
+
     QFile mf(metaPath);
     if (!mf.open(QIODevice::ReadOnly)) {
         QMessageBox::warning(this, "Ошибка", "Metadata не найден");
@@ -269,7 +274,7 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    QString encFilePath = QString("storage/files/%1").arg(filePath);
+    const QString encFilePath = storageAbs(QString("files/%1").arg(filePath));
     if (!QFileInfo::exists(encFilePath)) {
         QMessageBox::warning(this, "Ошибка", "Зашифрованный файл не найден");
         return;
@@ -288,7 +293,7 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
+    const QString absTmp = QFileInfo(tmpPath).absoluteFilePath();
 
     QFile::Permissions perms = QFile::permissions(absTmp);
     perms |= QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -451,13 +456,14 @@ void TeacherWindow::onCreateAssignment() {
 
     QString attached = QFileDialog::getOpenFileName(this, "Прикрепить файл к заданию (необязательно)");
     if (!attached.isEmpty()) {
-        QDir().mkpath("storage/assignments");
+        const QString assignmentsDir = storageAbs("assignments");
+        QDir().mkpath(assignmentsDir);
 
         QString uidSrc = title + QDateTime::currentDateTime().toString(Qt::ISODate) + QString::number(assignmentId);
         QString uuid = QString::fromUtf8(QCryptographicHash::hash(uidSrc.toUtf8(), QCryptographicHash::Md5).toHex());
 
         QString storedName = QString("%1_%2").arg(uuid, QFileInfo(attached).fileName());
-        QString targetAbs = QDir("storage/assignments").filePath(storedName);
+        const QString targetAbs = QDir(assignmentsDir).filePath(storedName);
 
         QFile::remove(targetAbs);
         if (!QFile::copy(attached, targetAbs)) {

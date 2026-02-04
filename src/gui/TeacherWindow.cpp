@@ -14,12 +14,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
-#include <QTemporaryFile>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QInputDialog>
 #include <QDir>
-#include <QByteArray>
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QDateTime>
@@ -31,6 +29,8 @@
 #include <QProcess>
 #include <QDebug>
 #include <QCryptographicHash>
+#include <QLineEdit>
+#include <QFileDevice>
 
 TeacherWindow::TeacherWindow(int teacherId, QWidget *parent)
     : QWidget(parent), m_teacherId(teacherId) {
@@ -247,18 +247,14 @@ void TeacherWindow::onDownloadSubmission() {
 
     QJsonObject mo = jd.object();
     QByteArray encKeyB64 = QByteArray::fromBase64(mo.value("key_encrypted").toString().toUtf8());
-    QByteArray keyIvB64 = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
+    QByteArray keyIvB64  = QByteArray::fromBase64(mo.value("key_iv").toString().toUtf8());
     QByteArray keyTagB64 = QByteArray::fromBase64(mo.value("key_tag").toString().toUtf8());
     QByteArray fileIvB64 = QByteArray::fromBase64(mo.value("iv").toString().toUtf8());
 
-    std::vector<unsigned char> encKey((unsigned char *)encKeyB64.data(),
-                                      (unsigned char *)encKeyB64.data() + encKeyB64.size());
-    std::vector<unsigned char> keyIv((unsigned char *)keyIvB64.data(),
-                                     (unsigned char *)keyIvB64.data() + keyIvB64.size());
-    std::vector<unsigned char> keyTag((unsigned char *)keyTagB64.data(),
-                                      (unsigned char *)keyTagB64.data() + keyTagB64.size());
-    std::vector<unsigned char> fileIv((unsigned char *)fileIvB64.data(),
-                                      (unsigned char *)fileIvB64.data() + fileIvB64.size());
+    std::vector<unsigned char> encKey((unsigned char*)encKeyB64.data(), (unsigned char*)encKeyB64.data() + encKeyB64.size());
+    std::vector<unsigned char> keyIv ((unsigned char*)keyIvB64.data(),  (unsigned char*)keyIvB64.data()  + keyIvB64.size());
+    std::vector<unsigned char> keyTag((unsigned char*)keyTagB64.data(), (unsigned char*)keyTagB64.data() + keyTagB64.size());
+    std::vector<unsigned char> fileIv((unsigned char*)fileIvB64.data(), (unsigned char*)fileIvB64.data() + fileIvB64.size());
 
     auto master = ConfigManager::instance().masterKey();
     if (master.empty()) {
@@ -300,29 +296,24 @@ void TeacherWindow::onDownloadSubmission() {
     QFile::setPermissions(absTmp, perms);
 
     if (QProcess::startDetached(QStringLiteral("xdg-open"), QStringList() << absTmp)) {
-        Logger::log(m_teacherId, "download_submission",
-                    QString("submission_id=%1 path=%2 (xdg-open)").arg(subId).arg(absTmp));
+        Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(absTmp));
         return;
     }
 
     if (QProcess::startDetached(QStringLiteral("gedit"), QStringList() << absTmp)) {
-        Logger::log(m_teacherId, "download_submission",
-                    QString("submission_id=%1 path=%2 (gedit)").arg(subId).arg(absTmp));
+        Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(absTmp));
         return;
     }
 
     if (QDesktopServices::openUrl(QUrl::fromLocalFile(absTmp))) {
-        Logger::log(m_teacherId, "download_submission",
-                    QString("submission_id=%1 path=%2 (QDesktopServices)").arg(subId).arg(absTmp));
+        Logger::log(m_teacherId, "download_submission", QString("submission_id=%1 path=%2").arg(subId).arg(absTmp));
         return;
     }
 
-    QMessageBox::warning(this, "Ошибка",
-                         "Не удалось автоматически открыть файл. Откройте вручную: " + absTmp);
+    QMessageBox::warning(this, "Ошибка", "Не удалось автоматически открыть файл. Откройте вручную: " + absTmp);
     qWarning() << "Failed to open file:" << absTmp;
 
-    Logger::log(m_teacherId, "download_submission_fail",
-                QString("submission_id=%1 path=%2").arg(subId).arg(absTmp));
+    Logger::log(m_teacherId, "download_submission_fail", QString("submission_id=%1 path=%2").arg(subId).arg(absTmp));
 }
 
 void TeacherWindow::onGradeSubmission() {
@@ -387,27 +378,6 @@ void TeacherWindow::onCreateAssignment() {
 
     QDateTime due = QDateTime::currentDateTime().addDays(days);
 
-    int chosenGroupId = -1;
-    QSqlQuery gq(Database::instance().get());
-    if (gq.exec("SELECT id, name FROM groups ORDER BY name")) {
-        QStringList groupNames;
-        QList<int> groupIds;
-        while (gq.next()) {
-            groupIds << gq.value(0).toInt();
-            groupNames << gq.value(1).toString();
-        }
-        if (!groupNames.isEmpty()) {
-            bool ok2;
-            QString chosen = QInputDialog::getItem(this, "Группа",
-                                                  "Выберите группу (или пусто для индивидуальных студентов):",
-                                                  groupNames, 0, true, &ok2);
-            if (ok2 && !chosen.isEmpty()) {
-                int idx = groupNames.indexOf(chosen);
-                if (idx >= 0) chosenGroupId = groupIds[idx];
-            }
-        }
-    }
-
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
     q.prepare("INSERT INTO assignments (title, description, discipline_id, created_by, due_date, created_at) "
@@ -424,14 +394,6 @@ void TeacherWindow::onCreateAssignment() {
 
     int assignmentId = q.value(0).toInt();
 
-    if (chosenGroupId != -1) {
-        QSqlQuery agq(db);
-        agq.prepare("INSERT INTO assignment_groups (assignment_id, group_id) VALUES (?, ?) ON CONFLICT DO NOTHING");
-        agq.addBindValue(assignmentId);
-        agq.addBindValue(chosenGroupId);
-        agq.exec();
-    }
-
     QSqlQuery sq(db);
     sq.prepare("SELECT id, login, full_name FROM users WHERE role = 'student' ORDER BY id");
     if (!sq.exec()) {
@@ -440,7 +402,7 @@ void TeacherWindow::onCreateAssignment() {
     }
 
     QDialog dlg(this);
-    dlg.setWindowTitle("Выберите студентов (оставьте пустым для всех/группы)");
+    dlg.setWindowTitle("Выберите студентов (оставьте пустым для всех)");
     QVBoxLayout *vl = new QVBoxLayout(&dlg);
     QListWidget *lw = new QListWidget(&dlg);
     lw->setSelectionMode(QAbstractItemView::NoSelection);
@@ -516,10 +478,9 @@ void TeacherWindow::onCreateAssignment() {
     }
 
     Logger::log(m_teacherId, "create_assignment",
-                QString("title=%1 assignment_id=%2 group_id=%3 students=%4")
+                QString("title=%1 assignment_id=%2 students=%3")
                     .arg(title)
                     .arg(assignmentId)
-                    .arg(chosenGroupId)
                     .arg(QString::number(chosen.size())));
 
     loadAssignments();

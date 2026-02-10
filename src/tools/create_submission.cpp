@@ -38,8 +38,8 @@ static std::string make_uuid_hex() {
     return hexEncode(crypto::genRandomBytes(16));
 }
 
-static std::string storagePathStd(const std::string &rel) {
-    return ConfigManager::instance().storagePath(rel);
+static QString storagePathQ(const std::string &rel) {
+    return QString::fromStdString(ConfigManager::instance().storagePath(rel));
 }
 
 int main(int argc, char** argv) {
@@ -85,8 +85,8 @@ int main(int argc, char** argv) {
     const std::string uuid = make_uuid_hex();
     const std::string filename = uuid + ".dat";
 
-    const std::string outPath = storagePathStd(std::string("files/") + filename);
-    const std::string metaPath = storagePathStd(std::string("metadata/") + uuid + ".json");
+    const std::string outPath = ConfigManager::instance().storagePath(std::string("files/") + filename);
+    const std::string metaPath = ConfigManager::instance().storagePath(std::string("metadata/") + uuid + ".json");
 
     std::vector<unsigned char> fileKey = crypto::genRandomBytes(32);
     std::vector<unsigned char> fileIv  = crypto::genRandomBytes(16);
@@ -127,9 +127,7 @@ int main(int argc, char** argv) {
 
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
-    q.prepare("INSERT INTO submissions "
-              "(assignment_id, student_id, file_path, original_name, uploaded_at) "
-              "VALUES (?, ?, ?, ?, NOW())");
+    q.prepare("SELECT sp_create_submission(?, ?, ?, ?)");
     q.addBindValue(assignmentId);
     q.addBindValue(studentId);
     q.addBindValue(QString::fromStdString(filename));

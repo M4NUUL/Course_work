@@ -93,7 +93,7 @@ void TeacherWindow::loadAssignments() {
 
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
-    q.prepare("SELECT id, title FROM assignments WHERE created_by = ?");
+    q.prepare("SELECT * FROM sp_get_assignments_for_teacher(?)");
     q.addBindValue(m_teacherId);
 
     if (!q.exec()) {
@@ -141,12 +141,8 @@ void TeacherWindow::loadSubmissions(int assignmentId) {
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
 
-    q.prepare(
-        "SELECT s.id, u.login, s.original_name, s.uploaded_at, s.grade, s.feedback, s.file_path "
-        "FROM submissions s "
-        "LEFT JOIN users u ON s.student_id = u.id "
-        "WHERE s.assignment_id = ?"
-    );
+    q.prepare("SELECT * FROM sp_get_submissions_for_assignment(?, ?)");
+    q.addBindValue(m_teacherId);
     q.addBindValue(assignmentId);
 
     if (!q.exec()) {
@@ -220,17 +216,13 @@ void TeacherWindow::onDownloadSubmission() {
         return;
     }
 
-    QSqlDatabase db = Database::instance().get();
-    QSqlQuery q(db);
-    q.prepare("SELECT file_path, original_name FROM submissions WHERE id = ?");
-    q.addBindValue(subId);
-    if (!q.exec() || !q.next()) {
+    QString filePath = fileItem->data(Qt::UserRole + 1).toString();
+    QString originalName = fileItem->text();
+
+    if (filePath.trimmed().isEmpty()) {
         QMessageBox::warning(this, "Ошибка", "Запись не найдена");
         return;
     }
-
-    QString filePath = q.value(0).toString();
-    QString originalName = q.value(1).toString();
 
     QString uuid = QFileInfo(filePath).baseName();
     const QString metaPath = storageAbs(QString("metadata/%1.json").arg(uuid));
@@ -355,15 +347,18 @@ void TeacherWindow::onGradeSubmission() {
 
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
-    q.prepare("UPDATE submissions SET grade = ?, feedback = ? WHERE id = ?");
+    q.prepare("SELECT sp_set_submission_grade(?, ?, ?, ?)");
+    q.addBindValue(m_teacherId);
+    q.addBindValue(subId);
     q.addBindValue(grade);
     q.addBindValue(feedback);
-    q.addBindValue(subId);
 
     if (!q.exec()) {
         QMessageBox::warning(this, "Ошибка", "Не удалось сохранить оценку: " + q.lastError().text());
         return;
     }
+
+    q.next();
 
     Logger::log(m_teacherId, "grade_submission", QString("submission_id=%1 grade=%2").arg(subId).arg(grade));
     loadSubmissions(currentAssignmentId);
@@ -385,11 +380,10 @@ void TeacherWindow::onCreateAssignment() {
 
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
-    q.prepare("INSERT INTO assignments (title, description, discipline_id, created_by, due_date, created_at) "
-              "VALUES (?, ?, NULL, ?, ?, NOW()) RETURNING id");
+    q.prepare("SELECT sp_create_assignment(?, ?, ?, ?)");
+    q.addBindValue(m_teacherId);
     q.addBindValue(title);
     q.addBindValue(desc);
-    q.addBindValue(m_teacherId);
     q.addBindValue(due);
 
     if (!q.exec() || !q.next()) {
@@ -400,7 +394,8 @@ void TeacherWindow::onCreateAssignment() {
     int assignmentId = q.value(0).toInt();
 
     QSqlQuery sq(db);
-    sq.prepare("SELECT id, login, full_name FROM users WHERE role = 'student' ORDER BY id");
+    sq.prepare("SELECT * FROM sp_list_students(?)");
+    sq.addBindValue(m_teacherId);
     if (!sq.exec()) {
         QMessageBox::warning(this, "Ошибка", "Не удалось получить список студентов: " + sq.lastError().text());
         return;
@@ -446,11 +441,16 @@ void TeacherWindow::onCreateAssignment() {
 
     if (!chosen.isEmpty()) {
         QSqlQuery insertq(db);
-        insertq.prepare("INSERT INTO assignment_students (assignment_id, student_id) VALUES (?, ?) ON CONFLICT DO NOTHING");
+        insertq.prepare("SELECT sp_assign_student_to_assignment(?, ?, ?)");
         for (int sid : chosen) {
-            insertq.bindValue(0, assignmentId);
-            insertq.bindValue(1, sid);
-            insertq.exec();
+            insertq.bindValue(0, m_teacherId);
+            insertq.bindValue(1, assignmentId);
+            insertq.bindValue(2, sid);
+            if (!insertq.exec()) {
+                QMessageBox::warning(this, "Ошибка", "Не удалось назначить студента: " + insertq.lastError().text());
+                return;
+            }
+            insertq.next();
         }
     }
 
@@ -470,8 +470,8 @@ void TeacherWindow::onCreateAssignment() {
             QMessageBox::warning(this, "Ошибка", "Не удалось сохранить прикреплённый файл");
         } else {
             QSqlQuery fq(db);
-            fq.prepare("INSERT INTO assignment_files (assignment_id, file_path, original_name, uploaded_at) "
-                       "VALUES (?, ?, ?, NOW())");
+            fq.prepare("SELECT sp_add_assignment_file(?, ?, ?, ?)");
+            fq.addBindValue(m_teacherId);
             fq.addBindValue(assignmentId);
             fq.addBindValue(storedName);
             fq.addBindValue(QFileInfo(attached).fileName());
@@ -479,6 +479,8 @@ void TeacherWindow::onCreateAssignment() {
             if (!fq.exec()) {
                 QFile::remove(targetAbs);
                 QMessageBox::warning(this, "Ошибка", "Не удалось записать файл в БД: " + fq.lastError().text());
+            } else {
+                fq.next();
             }
         }
     }
@@ -536,6 +538,8 @@ void TeacherWindow::onDeleteAssignment() {
         }
         return;
     }
+
+    q.next();
 
     Logger::log(m_teacherId, "delete_assignment", QString("assignment_id=%1").arg(assignmentId));
     loadAssignments();

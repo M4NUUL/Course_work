@@ -92,7 +92,7 @@ void StudentWindow::loadAssignments() {
     tblAssignments->setRowCount(0);
 
     QSqlQuery q(Database::instance().get());
-    q.prepare("SELECT id, title, due_date FROM sp_get_assignments_for_student(?)");
+    q.prepare("SELECT * FROM sp_get_assignments_for_student(?)");
     q.addBindValue(m_studentId);
 
     if (!q.exec()) {
@@ -133,10 +133,7 @@ void StudentWindow::loadMySubmissions() {
     tblMySubmissions->setRowCount(0);
 
     QSqlQuery q(Database::instance().get());
-    q.prepare(
-        "SELECT id, assignment_id, assignment_title, original_name, uploaded_at, grade, feedback, file_path "
-        "FROM sp_get_my_submissions(?)"
-    );
+    q.prepare("SELECT * FROM sp_get_my_submissions(?)");
     q.addBindValue(m_studentId);
 
     if (!q.exec()) {

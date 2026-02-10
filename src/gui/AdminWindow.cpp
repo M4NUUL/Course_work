@@ -14,6 +14,9 @@
 #include <QTableWidgetItem>
 #include <QDebug>
 
+#include "../auth/PasswordUtils.hpp"
+#include "../config/ConfigManager.hpp"
+
 AdminWindow::AdminWindow(int adminId, QWidget *parent)
     : QWidget(parent), m_adminId(adminId)
 {
@@ -69,32 +72,32 @@ void AdminWindow::loadUsers() {
     QSqlQuery q(Database::instance().get());
 
     // Загрузка пользователей без привязки к группам
-    if (!q.exec("SELECT u.id, u.login, COALESCE(u.full_name, ''), u.role "
-                "FROM users u "
-                "ORDER BY u.id")) {
+    q.prepare("SELECT * FROM sp_admin_list_users(?)");
+    q.addBindValue(m_adminId);
+    if (!q.exec()) {
         showError("Не удалось загрузить пользователей: " + q.lastError().text());
         return;
     }
 
     int r = 0;
-while (q.next()) {
-    const int uid = q.value(0).toInt();
-    const QString login = q.value(1).toString();
-    const QString full  = q.value(2).toString();
-    const QString role  = q.value(3).toString();
+    while (q.next()) {
+        const int uid = q.value(0).toInt();
+        const QString login = q.value(1).toString();
+        const QString full  = q.value(2).toString();
+        const QString role  = q.value(3).toString();
 
-    tblUsers->insertRow(r);
+        tblUsers->insertRow(r);
 
-    auto *loginItem = new QTableWidgetItem(login);
-    loginItem->setData(Qt::UserRole, uid);   // id НЕ отображаем, храним как metadata
-    tblUsers->setItem(r, 0, loginItem);
+        auto *loginItem = new QTableWidgetItem(login);
+        loginItem->setData(Qt::UserRole, uid);   // id НЕ отображаем, храним как metadata
+        tblUsers->setItem(r, 0, loginItem);
 
-    tblUsers->setItem(r, 1, new QTableWidgetItem(full));
-    tblUsers->setItem(r, 2, new QTableWidgetItem(role));
+        tblUsers->setItem(r, 1, new QTableWidgetItem(full));
+        tblUsers->setItem(r, 2, new QTableWidgetItem(role));
 
-    ++r;
-}
-tblUsers->resizeColumnsToContents();
+        ++r;
+    }
+    tblUsers->resizeColumnsToContents();
 }
 
 void AdminWindow::onCreateUser() {
@@ -116,37 +119,34 @@ void AdminWindow::onCreateUser() {
                                         QLineEdit::Password, "", &ok);
     if (!ok || pwd.isEmpty()) return;
 
-    // Регистрация пользователя (логин/роль/пароль)
-    if (!AuthManager::instance().registerUser(login.toStdString(),
-                                              role.toStdString(),
-                                              pwd.toStdString())) {
+    std::string err;
+    if (!auth::validatePasswordRules(pwd.toStdString(), err)) {
+        showError("Password invalid: " + QString::fromStdString(err));
+        return;
+    }
+
+    int iters = ConfigManager::instance().pbkdf2Iterations();
+    if (iters <= 0) {
+        iters = 100000;
+    }
+
+    auto pw = auth::createPasswordHash(pwd.toStdString(), iters);
+
+    QSqlQuery q(Database::instance().get());
+    q.prepare("SELECT sp_admin_create_user(?, ?, ?, ?, ?, ?)");
+    q.addBindValue(m_adminId);
+    q.addBindValue(login);
+    q.addBindValue(role);
+    q.addBindValue(full);
+    q.addBindValue(QString::fromStdString(auth::toHex(pw.hash)));
+    q.addBindValue(QString::fromStdString(auth::toHex(pw.salt)));
+
+    if (!q.exec() || !q.next()) {
         showError("Не удалось создать пользователя (возможно логин занят)");
         return;
     }
 
-    // Получение id созданного пользователя
-    QSqlQuery q(Database::instance().get());
-    q.prepare("SELECT id FROM users WHERE login = ?");
-    q.addBindValue(login);
-    if (!q.exec() || !q.next()) {
-        showError("Пользователь создан, но не удалось получить id. Проверьте базу.");
-        loadUsers();
-        return;
-    }
     int newUserId = q.value(0).toInt();
-
-    // Обновление поля full_name для созданного пользователя
-    QSqlQuery uq(Database::instance().get());
-    uq.prepare("UPDATE users SET full_name = ? WHERE id = ?");
-    uq.addBindValue(full);
-    uq.addBindValue(newUserId);
-    if (!uq.exec()) {
-        showError("Пользователь создан, но не удалось сохранить имя: " + uq.lastError().text());
-        Logger::log(m_adminId, "create_user_partial",
-                    QString("login=%1 id=%2 full_name_fail").arg(login).arg(newUserId));
-        loadUsers();
-        return;
-    }
 
     Logger::log(m_adminId, "create_user",
                 QString("id=%1 login=%2 role=%3").arg(newUserId).arg(login).arg(role));
@@ -163,14 +163,17 @@ void AdminWindow::onToggleActive() {
     int uid = selectedUserId();
     if (uid < 0) { showError("Выберите пользователя"); return; }
 
-
     QSqlQuery q(Database::instance().get());
-    q.prepare("UPDATE users SET active = NOT active WHERE id = ?");
+    q.prepare("SELECT sp_admin_toggle_user_active(?, ?)");
+    q.addBindValue(m_adminId);
     q.addBindValue(uid);
     if (!q.exec()) {
         showError("Не удалось обновить статус: " + q.lastError().text());
         return;
     }
+
+    q.next();
+
     Logger::log(m_adminId, "toggle_active", QString("user_id=%1").arg(uid));
     loadUsers();
 }
@@ -184,7 +187,8 @@ void AdminWindow::onEditUser() {
     int uid = selectedUserId();
     if (uid < 0) { showError("Выберите пользователя"); return; }
     QSqlQuery q(Database::instance().get());
-    q.prepare("SELECT login, full_name, role FROM users WHERE id = ?");
+    q.prepare("SELECT * FROM sp_admin_get_user(?, ?)");
+    q.addBindValue(m_adminId);
     q.addBindValue(uid);
     if (!q.exec() || !q.next()) {
         showError("Пользователь не найден");
@@ -204,14 +208,17 @@ void AdminWindow::onEditUser() {
     if (!ok) return;
 
     QSqlQuery uq(Database::instance().get());
-    uq.prepare("UPDATE users SET full_name = ?, role = ? WHERE id = ?");
+    uq.prepare("SELECT sp_admin_update_user(?, ?, ?, ?)");
+    uq.addBindValue(m_adminId);
+    uq.addBindValue(uid);
     uq.addBindValue(newFull);
     uq.addBindValue(newRole);
-    uq.addBindValue(uid);
     if (!uq.exec()) {
         showError("Не удалось обновить пользователя: " + uq.lastError().text());
         return;
     }
+
+    uq.next();
 
     Logger::log(m_adminId, "edit_user", QString("user_id=%1 login=%2").arg(uid).arg(login));
     loadUsers();
@@ -236,7 +243,6 @@ void AdminWindow::onDeleteUser() {
 
     QString login = tblUsers->item(row, 0)->text(); // login в 0-й колонке
 
-
     if (QMessageBox::question(this, "Удалить пользователя",
                               QString("Удалить пользователя %1 ?").arg(login),
                               QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) {
@@ -251,6 +257,9 @@ void AdminWindow::onDeleteUser() {
         showError("Не удалось удалить пользователя: " + q.lastError().text());
         return;
     }
+
+    q.next();
+
     Logger::log(m_adminId, "delete_user", QString("user_id=%1").arg(userId));
     loadUsers();
     QMessageBox::information(this, "OK", "Пользователь удалён");

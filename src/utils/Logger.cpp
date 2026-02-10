@@ -4,6 +4,8 @@
 #include <QDateTime>
 #include "db/Database.hpp"
 #include <QSqlQuery>
+#include <QSqlError>
+#include <QDebug>
 
 void Logger::log(int userId, const QString &action, const QString &details) {
     QFile f("logs/actions.log");
@@ -14,9 +16,13 @@ void Logger::log(int userId, const QString &action, const QString &details) {
     }
     QSqlDatabase db = Database::instance().get();
     QSqlQuery q(db);
-    q.prepare("INSERT INTO audit_log(user_id, action, details, ts) VALUES(?,?,?,CURRENT_TIMESTAMP)");
+    q.prepare("SELECT sp_log_action(?, ?, ?)");
     q.addBindValue(userId);
     q.addBindValue(action);
     q.addBindValue(details);
-    q.exec();
+    if (!q.exec()) {
+        qWarning() << "sp_log_action failed:" << q.lastError().text();
+        return;
+    }
+    q.next();
 }

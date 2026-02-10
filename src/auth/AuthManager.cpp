@@ -38,8 +38,7 @@ bool AuthManager::registerUser(const std::string &login,
     QSqlQuery q(db);
 
     q.prepare(R"SQL(
-        INSERT INTO users (login, role, password_hash, salt, created_at, active)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, true)
+        SELECT sp_register_user(?, ?, ?, ?)
     )SQL");
     q.addBindValue(loginQ);
     q.addBindValue(QString::fromStdString(role));
@@ -50,6 +49,8 @@ bool AuthManager::registerUser(const std::string &login,
         qWarning() << "Register error:" << q.lastError().text();
         return false;
     }
+
+    q.next();
     return true;
 }
 
@@ -62,9 +63,7 @@ bool AuthManager::authenticate(const std::string &login,
     QSqlQuery q(db);
 
     q.prepare(R"SQL(
-        SELECT id, password_hash, salt, role
-        FROM users
-        WHERE login = ? AND active = true
+        SELECT * FROM sp_get_user_auth_data(?)
     )SQL");
     q.addBindValue(QString::fromStdString(login));
 

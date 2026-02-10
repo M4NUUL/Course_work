@@ -72,7 +72,7 @@ AssignmentDetailDialog::AssignmentDetailDialog(int assignmentId, QWidget *parent
 
 void AssignmentDetailDialog::loadDetails() {
     QSqlQuery q(Database::instance().get());
-    q.prepare("SELECT title, description, due_date FROM assignments WHERE id = ?");
+    q.prepare("SELECT * FROM sp_get_assignment_details(?)");
     q.addBindValue(m_assignmentId);
 
     if (!q.exec() || !q.next()) {
@@ -107,12 +107,7 @@ void AssignmentDetailDialog::loadFiles() {
     tblFiles->setRowCount(0);
 
     QSqlQuery q(Database::instance().get());
-    q.prepare(
-        "SELECT id, original_name, file_path "
-        "FROM assignment_files "
-        "WHERE assignment_id = ? "
-        "ORDER BY uploaded_at DESC, id DESC"
-    );
+    q.prepare("SELECT * FROM sp_get_assignment_files(?)");
     q.addBindValue(m_assignmentId);
 
     if (!q.exec()) {
